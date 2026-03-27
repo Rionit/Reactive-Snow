@@ -5,6 +5,7 @@ Shader "Custom/Tesselation"
         [MainColor] _BaseColor("Base Color", Color) = (1, 1, 1, 1)
         [MainTexture] _BaseMap("Base Map", 2D) = "white" {}
         _TesselationAmount("Tesselation Amount", Range(1.0, 64.0)) = 1.0
+        _TesselationMap ("Tessellation Map", 2D) = "black" {} // will be also used to represent depressed snow
     }
 
     SubShader
@@ -51,7 +52,7 @@ Shader "Custom/Tesselation"
             };
 
             // Tessellation factors (how much to subdivide)
-            struct TessFactors
+            struct TesselationFactors
             {
                 float edge[3] : SV_TessFactor;      // edge = how many times the edge will subdivide
                 float inside : SV_InsideTessFactor; // inside^2 = how many new triangles will be created 
@@ -59,6 +60,7 @@ Shader "Custom/Tesselation"
 
             TEXTURE2D(_BaseMap);
             SAMPLER(sampler_BaseMap);
+            sampler2D _TesselationMap;
 
             CBUFFER_START(UnityPerMaterial)
                 half4 _BaseColor;
@@ -91,10 +93,16 @@ Shader "Custom/Tesselation"
             // Patch constant function:
             // Runs once per patch (triangle)
             // Defines how much tessellation to apply
-            TessFactors patchConstantFunc(InputPatch<ControlPoint, 3> patch)
+            TesselationFactors patchConstantFunc(InputPatch<ControlPoint, 3> patch)
             {
-                TessFactors factors;
-                factors.edge[0] = factors.edge[1] = factors.edge[2] = factors.inside = _TesselationAmount;
+                TesselationFactors factors;
+                // Sample tesselation texture
+                float3 p0 = tex2Dlod(_TesselationMap, float4(patch[0].uv.x, patch[0].uv.y, 0, 0));
+                float3 p1 = tex2Dlod(_TesselationMap, float4(patch[1].uv.x, patch[1].uv.y, 0, 0));
+                float3 p2 = tex2Dlod(_TesselationMap, float4(patch[2].uv.x, patch[2].uv.y, 0, 0));
+                // Tesselate only where the texture is white + smooth gradient from no tesselation parts
+                float factor = ((length(p0) + length(p1) + length(p2)) / 3.0) * _TesselationAmount + 1.0;
+                factors.edge[0] = factors.edge[1] = factors.edge[2] = factors.inside = factor;
                 return factors;
             }
 
@@ -103,7 +111,7 @@ Shader "Custom/Tesselation"
             // Uses barycentric coordinates to interpolate data across the triangle
             // because they do not have any data at this point
             [domain("tri")]
-            Varyings domain(TessFactors factors, OutputPatch<ControlPoint, 3> patch, float3 barycentricCoords : SV_DomainLocation)
+            Varyings domain(TesselationFactors factors, OutputPatch<ControlPoint, 3> patch, float3 barycentricCoords : SV_DomainLocation)
             {
                 Varyings OUT;
                 float3 positionWS = patch[0].positionWS * barycentricCoords.x +
@@ -114,6 +122,13 @@ Shader "Custom/Tesselation"
                     patch[1].uv * barycentricCoords.y +
                     patch[2].uv * barycentricCoords.z;
 
+                // Shift vertices down where tesselated/texture is white
+                // Currently makes some gaps in some places
+                // TODO: fix me!
+                float3 p0 = tex2Dlod(_TesselationMap, float4(uv, 0, 0));
+                float factor = length(p0);
+                positionWS.y -= factor * 0.25;
+                
                 // Convert to clip space for rasterization
                 OUT.positionHCS = TransformWorldToHClip(positionWS);
                 OUT.uv = uv;
