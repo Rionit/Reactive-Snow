@@ -4,8 +4,12 @@ Shader "Custom/Tesselation"
     {
         [MainColor] _BaseColor("Base Color", Color) = (1, 1, 1, 1)
         [MainTexture] _BaseMap("Base Map", 2D) = "white" {}
+        
+        [KeywordEnum(Integer, FractionalOdd, FractionalEven, Pow2)]
+        _Partitioning ("Partitioning Mode", Float) = 0
         _TesselationAmount("Tesselation Amount", Range(1.0, 64.0)) = 1.0
         _TesselationMap ("Tessellation Map", 2D) = "black" {} // will be also used to represent depressed snow
+        _DisplacementAmount("Displacement Amount", Range(0.0, 0.5)) = 0.25
     }
 
     SubShader
@@ -25,6 +29,7 @@ Shader "Custom/Tesselation"
             #pragma fragment frag
             #pragma hull hull
             #pragma domain domain
+            #pragma shader_feature _PARTITIONING_INTEGER _PARTITIONING_FRACTIONALODD _PARTITIONING_FRACTIONALEVEN _PARTITIONING_POW2
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
@@ -68,6 +73,7 @@ Shader "Custom/Tesselation"
                 half4 _BaseColor;
                 float4 _BaseMap_ST;
                 float _TesselationAmount;
+                float _DisplacementAmount;
             CBUFFER_END
 
             ControlPoint vert(Attributes IN)
@@ -86,7 +92,15 @@ Shader "Custom/Tesselation"
             [domain("tri")] // use triangle primitive for each input patch
             [outputcontrolpoints(3)] // how many vertices to ouput to create new patch, sicne we use triangles -> 3
             [outputtopology("triangle_cw")] // type of output patch primitive
+            #if defined(_PARTITIONING_INTEGER)
             [partitioning("integer")] // equal spacing with integer, new positions get rounded to integer
+            #elif defined(_PARTITIONING_FRACTIONALODD)
+            [partitioning("fractional_odd")]
+            #elif defined(_PARTITIONING_FRACTIONALEVEN)
+            [partitioning("fractional_even")]
+            #elif defined(_PARTITIONING_POW2)
+            [partitioning("pow2")] // same as integer visually
+            #endif
             [patchconstantfunc("patchConstantFunc")] // tells unity to use this function as patch function
             ControlPoint hull(InputPatch<ControlPoint, 3> patch, uint id : SV_OutputControlPointID)
             {
@@ -101,19 +115,19 @@ Shader "Custom/Tesselation"
             {
                 TesselationFactors factors;
 
-                float3 f0 = tex2Dlod(_TesselationMap, float4(patch[0].uv, 0, 0));
-                float3 f1 = tex2Dlod(_TesselationMap, float4(patch[1].uv, 0, 0));
-                float3 f2 = tex2Dlod(_TesselationMap, float4(patch[2].uv, 0, 0));
+                float3 p0 = tex2Dlod(_TesselationMap, float4(patch[0].uv, 0, 0));
+                float3 p1 = tex2Dlod(_TesselationMap, float4(patch[1].uv, 0, 0));
+                float3 p2 = tex2Dlod(_TesselationMap, float4(patch[2].uv, 0, 0));
 
                 // Edge tess factors = average of the two vertices forming that edge
                 // Needed for consistent vertex generation on the shared edge of two neighboring patches
                 // Otherwise it creates holes/cracks when displaced downwards
-                factors.edge[0] = (length(f1) + length(f2)) * 0.5 * _TesselationAmount + 1.0;
-                factors.edge[1] = (length(f2) + length(f0)) * 0.5 * _TesselationAmount + 1.0;
-                factors.edge[2] = (length(f0) + length(f1)) * 0.5 * _TesselationAmount + 1.0;
+                factors.edge[0] = (length(p1) + length(p2)) * 0.5 * _TesselationAmount + 1.0;
+                factors.edge[1] = (length(p2) + length(p0)) * 0.5 * _TesselationAmount + 1.0;
+                factors.edge[2] = (length(p0) + length(p1)) * 0.5 * _TesselationAmount + 1.0;
 
                 // Inside factor = average of all
-                factors.inside = (f0 + f1 + f2) / 3.0 * _TesselationAmount + 1.0;
+                factors.inside = (length(p0) + length(p1) + length(p2)) / 3.0 * _TesselationAmount + 1.0;
 
                 return factors;
             }
@@ -144,8 +158,8 @@ Shader "Custom/Tesselation"
 
                 // Shift vertices down where tesselated/texture is white
                 float3 p0 = tex2Dlod(_TesselationMap, float4(uv, 0, 0));
-                float factor = length(p0);
-                positionWS.y -= factor * 0.25;
+                float factor = length(p0) / 3.0;
+                positionWS.y -= factor * _DisplacementAmount;
                 // Possible variation where it also pushes along the normal 
                 // positionWS -= normalWS * factor * 0.25;
                 
