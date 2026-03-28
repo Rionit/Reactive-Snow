@@ -20,7 +20,7 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: TestMat
+  m_Name: Snow
   m_Shader: {fileID: 4800000, guid: 8d7e0bfbac350b73c87a7b1952f2dc64, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
