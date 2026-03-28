@@ -33,6 +33,7 @@ Shader "Custom/Tesselation"
             struct Attributes
             {
                 float4 positionOS : POSITION;
+                float4 normalOS : NORMAL;
                 float2 uv : TEXCOORD0;
             };
 
@@ -48,6 +49,7 @@ Shader "Custom/Tesselation"
             struct ControlPoint
             {
                 float3 positionWS : INTERNALTESSPOS;
+                float3 normalWS : NORMAL;
                 float2 uv : TEXCOORD0;
             };
 
@@ -72,6 +74,7 @@ Shader "Custom/Tesselation"
             {
                 ControlPoint OUT;
                 OUT.positionWS = TransformObjectToWorld(IN.positionOS.xyz);
+                OUT.normalWS = TransformObjectToWorldNormal(IN.normalOS);
                 OUT.uv = TRANSFORM_TEX(IN.uv, _BaseMap);
                 return OUT;
             }
@@ -94,15 +97,24 @@ Shader "Custom/Tesselation"
             // Runs once per patch (triangle)
             // Defines how much tessellation to apply
             TesselationFactors patchConstantFunc(InputPatch<ControlPoint, 3> patch)
+            
             {
                 TesselationFactors factors;
-                // Sample tesselation texture
-                float3 p0 = tex2Dlod(_TesselationMap, float4(patch[0].uv.x, patch[0].uv.y, 0, 0));
-                float3 p1 = tex2Dlod(_TesselationMap, float4(patch[1].uv.x, patch[1].uv.y, 0, 0));
-                float3 p2 = tex2Dlod(_TesselationMap, float4(patch[2].uv.x, patch[2].uv.y, 0, 0));
-                // Tesselate only where the texture is white + smooth gradient from no tesselation parts
-                float factor = ((length(p0) + length(p1) + length(p2)) / 3.0) * _TesselationAmount + 1.0;
-                factors.edge[0] = factors.edge[1] = factors.edge[2] = factors.inside = factor;
+
+                float3 f0 = tex2Dlod(_TesselationMap, float4(patch[0].uv, 0, 0));
+                float3 f1 = tex2Dlod(_TesselationMap, float4(patch[1].uv, 0, 0));
+                float3 f2 = tex2Dlod(_TesselationMap, float4(patch[2].uv, 0, 0));
+
+                // Edge tess factors = average of the two vertices forming that edge
+                // Needed for consistent vertex generation on the shared edge of two neighboring patches
+                // Otherwise it creates holes/cracks when displaced downwards
+                factors.edge[0] = (length(f1) + length(f2)) * 0.5 * _TesselationAmount + 1.0;
+                factors.edge[1] = (length(f2) + length(f0)) * 0.5 * _TesselationAmount + 1.0;
+                factors.edge[2] = (length(f0) + length(f1)) * 0.5 * _TesselationAmount + 1.0;
+
+                // Inside factor = average of all
+                factors.inside = (f0 + f1 + f2) / 3.0 * _TesselationAmount + 1.0;
+
                 return factors;
             }
 
@@ -114,20 +126,28 @@ Shader "Custom/Tesselation"
             Varyings domain(TesselationFactors factors, OutputPatch<ControlPoint, 3> patch, float3 barycentricCoords : SV_DomainLocation)
             {
                 Varyings OUT;
-                float3 positionWS = patch[0].positionWS * barycentricCoords.x +
-                    patch[1].positionWS * barycentricCoords.y +
-                    patch[2].positionWS * barycentricCoords.z;
+                float3 positionWS =
+                patch[0].positionWS * barycentricCoords.x +
+                patch[1].positionWS * barycentricCoords.y +
+                patch[2].positionWS * barycentricCoords.z;
 
-                float2 uv = patch[0].uv * barycentricCoords.x +
-                    patch[1].uv * barycentricCoords.y +
-                    patch[2].uv * barycentricCoords.z;
+                float2 uv =
+                patch[0].uv * barycentricCoords.x +
+                patch[1].uv * barycentricCoords.y +
+                patch[2].uv * barycentricCoords.z;
+
+                float3 normalWS =
+                patch[0].normalWS * barycentricCoords.x +
+                patch[1].normalWS * barycentricCoords.y +
+                patch[2].normalWS * barycentricCoords.z;
+                normalWS = normalize(normalWS);
 
                 // Shift vertices down where tesselated/texture is white
-                // Currently makes some gaps in some places
-                // TODO: fix me!
                 float3 p0 = tex2Dlod(_TesselationMap, float4(uv, 0, 0));
                 float factor = length(p0);
                 positionWS.y -= factor * 0.25;
+                // Possible variation where it also pushes along the normal 
+                // positionWS -= normalWS * factor * 0.25;
                 
                 // Convert to clip space for rasterization
                 OUT.positionHCS = TransformWorldToHClip(positionWS);
