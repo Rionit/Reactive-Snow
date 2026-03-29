@@ -19,12 +19,12 @@ Shader "Custom/Combined"
         [KeywordEnum(Integer, FractionalOdd, FractionalEven, Pow2)]
         _Partitioning ("Partitioning Mode", Float) = 0
         _TesselationAmount("Tesselation Amount", Range(1.0, 64.0)) = 1.0
-        _TesselationMap ("Tessellation Map", 2D) = "black" {} // will be also used to represent depressed snow
+        [NoScaleOffset] _TesselationMap ("Tessellation Map", 2D) = "black" {} // will be also used to represent depressed snow
         
         [Header(Displacement Settings)]
         [Space]
-        _DisplacementAmount("Displacement Amount", Range(0.0, 0.5)) = 0.25
-        _NormalCorrectionOffset("Normal Correction Offset", Range(0.0, 0.1)) = 0.01
+        _DisplacementAmount("Displacement Amount", Range(0.0, 2.5)) = 0.25
+        _NormalCorrectionOffset("Normal Correction Offset", Range(0.0, 0.02)) = 0.01
     }
 
     SubShader
@@ -44,7 +44,6 @@ Shader "Custom/Combined"
             #pragma fragment frag
             #pragma hull hull
             #pragma domain domain
-            // #pragma geometry geom
 
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS 
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
@@ -197,7 +196,6 @@ Shader "Custom/Combined"
                 patch[0].normalWS * barycentricCoords.x +
                 patch[1].normalWS * barycentricCoords.y +
                 patch[2].normalWS * barycentricCoords.z;
-                normalWS = normalize(normalWS);
 
                 float4 tangentWS =
                 patch[0].tangentWS * barycentricCoords.x +
@@ -211,31 +209,46 @@ Shader "Custom/Combined"
                 positionWS.y -= factor * _DisplacementAmount;
                 // ^^^^^
                 // Because we displacing the vertices, we need to recalculate
-                // the normals. But we only have the control points of the mesh
-                // and barycentric coords for this current tesselated vertex
-                // so we have to sample around the vertex the displacement
-                // values and calculate their new world positions
-                // and calculate new normal from that.
-                // No clue how else to do this xdd
-                
-                float e = _NormalCorrectionOffset;
-                // Sample displacement values in a triangle around tesselated vertex
-                float3 p0 = tex2Dlod(_TesselationMap, float4(uv - float2(e, e), 0, 0));
-                float3 p1 = tex2Dlod(_TesselationMap, float4(uv - float2(e, 0), 0, 0));
-                float3 p2 = tex2Dlod(_TesselationMap, float4(uv - float2(-e, e), 0, 0));
-                float f0 = length(p0) / 3.0; // because rgb divide by three, could probably just take one channel
-                float f1 = length(p1) / 3.0;
-                float f2 = length(p2) / 3.0;
+                // the normals.
+
+                // Direction from current vertex uv to
+                // control point uv's of the patch
+                float2 v0 = patch[0].uv - uv;
+                float2 v1 = patch[1].uv - uv;
+                float2 v2 = patch[2].uv - uv;
+
+                // Avoids division by zero and precision issues when the vector is very small
+                float l0 = max(length(v0), 1e-6);
+                float l1 = max(length(v1), 1e-6);
+                float l2 = max(length(v2), 1e-6);
+
+                // We have to divide by l, because normalize(e)
+                // makes visual errors at poles
+                float2 o0 = v0 * (_NormalCorrectionOffset / l0); 
+                float2 o1 = v1 * (_NormalCorrectionOffset / l1);
+                float2 o2 = v2 * (_NormalCorrectionOffset / l2);
+
+                // Avoid overshooting outside of the current patch
+                o0 = (l0 <= _NormalCorrectionOffset) ? v0 : o0;
+                o1 = (l1 <= _NormalCorrectionOffset) ? v1 : o1;
+                o2 = (l2 <= _NormalCorrectionOffset) ? v2 : o2;
+
+                // Sample displacement values in a triangle around tessellated vertex
+                float s0 = tex2Dlod(_TesselationMap, float4(uv + o0, 0, 0));
+                float s1 = tex2Dlod(_TesselationMap, float4(uv + o1, 0, 0));
+                float s2 = tex2Dlod(_TesselationMap, float4(uv + o2, 0, 0));
+
                 // Take tangent and bi-tangent
-                float3 dp1 = (patch[1].positionWS - float3(0, f1 * _DisplacementAmount, 0))
-                           - (patch[0].positionWS - float3(0, f0 * _DisplacementAmount, 0));
-                float3 dp2 = (patch[2].positionWS - float3(0, f2 * _DisplacementAmount, 0))
-                           - (patch[0].positionWS - float3(0, f0 * _DisplacementAmount, 0));
+                float3 t1 = (patch[1].positionWS - float3(0, s1 * _DisplacementAmount, 0))
+                          - (patch[0].positionWS - float3(0, s0 * _DisplacementAmount, 0));
+                float3 t2 = (patch[2].positionWS - float3(0, s2 * _DisplacementAmount, 0))
+                          - (patch[0].positionWS - float3(0, s0 * _DisplacementAmount, 0));
+
                 // Calculate new normal after displacement
-                normalWS = normalize(cross(dp1, dp2));
+                normalWS = normalize(cross(t1, t2));
 
                 // Creates the TBN matrix
-                VertexNormalInputs tbn = GetVertexNormalInputs(normalWS, tangentWS);
+                VertexNormalInputs tbn = GetVertexNormalInputs(TransformWorldToObjectNormal(normalWS), tangentWS);
 
                 OUT.tangent0 = tbn.tangentWS;
                 OUT.tangent1 = tbn.bitangentWS;
@@ -249,29 +262,6 @@ Shader "Custom/Combined"
 
                 return OUT;
             }
-
-            /*
-            // This works too but is not smooth
-            // Maybe we really need to do it using geometry shader tho
-            // (the normal recalculation)
-            [maxvertexcount(3)]
-            void geom(triangle Varyings input[3], inout TriangleStream<Varyings> triStream)
-            {
-                // Compute the true tessellated normal from displaced positions
-                float3 edge1 = input[1].worldPos - input[0].worldPos;
-                float3 edge2 = input[2].worldPos - input[0].worldPos;
-                float3 normalWS = normalize(cross(edge1, edge2));
-
-                // Update the TBN to use this new normal
-                for (int i = 0; i < 3; i++)
-                {
-                    // Keep tangent aligned with displacement (you can keep domain's tangent or recompute)
-                    input[i].tangent2 = normalWS;  // Update normal
-                    triStream.Append(input[i]);
-                }
-
-                triStream.RestartStrip();
-            }*/
 
             float GetDiff(half NDotL)
             {
