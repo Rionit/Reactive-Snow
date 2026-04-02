@@ -156,9 +156,10 @@ Shader "Custom/Combined"
             {
                 TesselationFactors factors;
 
-                float3 p0 = tex2Dlod(_TesselationMap, float4(patch[0].uv, 0, 0));
-                float3 p1 = tex2Dlod(_TesselationMap, float4(patch[1].uv, 0, 0));
-                float3 p2 = tex2Dlod(_TesselationMap, float4(patch[2].uv, 0, 0));
+                // float2(1.0, 0.0) - because ortho camera looking up from bottom
+                float3 p0 = tex2Dlod(_TesselationMap, float4(float2(1.0, 0.0) - patch[0].uv, 0, 0));
+                float3 p1 = tex2Dlod(_TesselationMap, float4(float2(1.0, 0.0) - patch[1].uv, 0, 0));
+                float3 p2 = tex2Dlod(_TesselationMap, float4(float2(1.0, 0.0) - patch[2].uv, 0, 0));
 
                 // Edge tess factors = average of the two vertices forming that edge
                 // Needed for consistent vertex generation on the shared edge of two neighboring patches
@@ -192,6 +193,11 @@ Shader "Custom/Combined"
                 patch[1].uv * barycentricCoords.y +
                 patch[2].uv * barycentricCoords.z;
 
+                // These UV coords are used for displacement
+                // map, because the ortho camera is looking
+                // from the bottom
+                float2 duv = float2(1.0 - uv.x, uv.y);
+
                 float3 normalWS =
                 patch[0].normalWS * barycentricCoords.x +
                 patch[1].normalWS * barycentricCoords.y +
@@ -204,7 +210,7 @@ Shader "Custom/Combined"
                 tangentWS.xyz = normalize(tangentWS.xyz);
 
                 // Shift vertices down where tesselated/texture is white
-                float3 f = tex2Dlod(_TesselationMap, float4(uv, 0, 0));
+                float3 f = tex2Dlod(_TesselationMap, float4(duv, 0, 0));
                 float factor = length(f) / 3.0;
                 positionWS.y -= factor * _DisplacementAmount;
                 // ^^^^^
@@ -234,9 +240,9 @@ Shader "Custom/Combined"
                 o2 = (l2 <= _NormalCorrectionOffset) ? v2 : o2;
 
                 // Sample displacement values in a triangle around tessellated vertex
-                float s0 = tex2Dlod(_TesselationMap, float4(uv + o0, 0, 0));
-                float s1 = tex2Dlod(_TesselationMap, float4(uv + o1, 0, 0));
-                float s2 = tex2Dlod(_TesselationMap, float4(uv + o2, 0, 0));
+                float s0 = tex2Dlod(_TesselationMap, float4(duv + o0, 0, 0));
+                float s1 = tex2Dlod(_TesselationMap, float4(duv + o1, 0, 0));
+                float s2 = tex2Dlod(_TesselationMap, float4(duv + o2, 0, 0));
 
                 // Take tangent and bi-tangent
                 float3 t1 = (patch[1].positionWS - float3(0, s1 * _DisplacementAmount, 0))
