@@ -156,20 +156,30 @@ Shader "Custom/Combined"
             {
                 TesselationFactors factors;
 
-                // float2(1.0, 0.0) - because ortho camera looking up from bottom
-                float3 p0 = tex2Dlod(_TesselationMap, float4(float2(1.0, 0.0) - patch[0].uv, 0, 0));
-                float3 p1 = tex2Dlod(_TesselationMap, float4(float2(1.0, 0.0) - patch[1].uv, 0, 0));
-                float3 p2 = tex2Dlod(_TesselationMap, float4(float2(1.0, 0.0) - patch[2].uv, 0, 0));
+                // 1.0 - uv.x because ortho camera looking up from bottom
+                float2 uv0 = float2(1.0 - patch[0].uv.x, patch[0].uv.y);
+                float2 uv1 = float2(1.0 - patch[1].uv.x, patch[1].uv.y);
+                float2 uv2 = float2(1.0 - patch[2].uv.x, patch[2].uv.y);
 
-                // Edge tess factors = average of the two vertices forming that edge
-                // Needed for consistent vertex generation on the shared edge of two neighboring patches
-                // Otherwise it creates holes/cracks when displaced downwards
-                factors.edge[0] = (length(p1) + length(p2)) * 0.5 * _TesselationAmount + 1.0;
-                factors.edge[1] = (length(p2) + length(p0)) * 0.5 * _TesselationAmount + 1.0;
-                factors.edge[2] = (length(p0) + length(p1)) * 0.5 * _TesselationAmount + 1.0;
+                float2 mid01 = (uv0 + uv1) * 0.5;
+                float2 mid12 = (uv1 + uv2) * 0.5;
+                float2 mid20 = (uv2 + uv0) * 0.5;
 
-                // Inside factor = average of all
-                factors.inside = (length(p0) + length(p1) + length(p2)) / 3.0 * _TesselationAmount + 1.0;
+                float2 center = (uv0 + uv1 + uv2) / 3.0;
+
+                float e0 = tex2Dlod(_TesselationMap, float4(mid12, 0, 0)).r;
+                float e1 = tex2Dlod(_TesselationMap, float4(mid20, 0, 0)).r;
+                float e2 = tex2Dlod(_TesselationMap, float4(mid01, 0, 0)).r;
+
+                float c = tex2Dlod(_TesselationMap, float4(center, 0, 0)).r;
+
+                // Edge tess factors = sampled at edge midpoints
+                factors.edge[0] = e0 * _TesselationAmount + 1.0;
+                factors.edge[1] = e1 * _TesselationAmount + 1.0;
+                factors.edge[2] = e2 * _TesselationAmount + 1.0;
+
+                // Inside factor = sampled at triangle center
+                factors.inside = c * _TesselationAmount + 1.0;
 
                 return factors;
             }
@@ -210,8 +220,8 @@ Shader "Custom/Combined"
                 tangentWS.xyz = normalize(tangentWS.xyz);
 
                 // Shift vertices down where tesselated/texture is white
-                float3 f = tex2Dlod(_TesselationMap, float4(duv, 0, 0));
-                float factor = length(f) / 3.0;
+                float factor = tex2Dlod(_TesselationMap, float4(duv, 0, 0)).r;
+                //float factor = length(f) / 3.0;
                 positionWS.y -= factor * _DisplacementAmount;
                 // ^^^^^
                 // Because we displacing the vertices, we need to recalculate
@@ -240,9 +250,9 @@ Shader "Custom/Combined"
                 o2 = (l2 <= _NormalCorrectionOffset) ? v2 : o2;
 
                 // Sample displacement values in a triangle around tessellated vertex
-                float s0 = tex2Dlod(_TesselationMap, float4(duv + o0, 0, 0));
-                float s1 = tex2Dlod(_TesselationMap, float4(duv + o1, 0, 0));
-                float s2 = tex2Dlod(_TesselationMap, float4(duv + o2, 0, 0));
+                float s0 = tex2Dlod(_TesselationMap, float4(duv + o0, 0, 0)).r;
+                float s1 = tex2Dlod(_TesselationMap, float4(duv + o1, 0, 0)).r;
+                float s2 = tex2Dlod(_TesselationMap, float4(duv + o2, 0, 0)).r;
 
                 // Take tangent and bi-tangent
                 float3 t1 = (patch[1].positionWS - float3(0, s1 * _DisplacementAmount, 0))
