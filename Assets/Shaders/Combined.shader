@@ -19,7 +19,7 @@ Shader "Custom/Combined"
         [KeywordEnum(Integer, FractionalOdd, FractionalEven, Pow2)]
         _Partitioning ("Partitioning Mode", Float) = 0
         _TesselationAmount("Tesselation Amount", Range(1.0, 64.0)) = 1.0
-        [NoScaleOffset] _TesselationMap ("Tessellation Map", 2D) = "black" {} // will be also used to represent depressed snow
+        [NoScaleOffset] _DepthMap ("Depth Map", 2D) = "black" {}
         
         [Header(Displacement Settings)]
         [Space]
@@ -99,7 +99,8 @@ Shader "Custom/Combined"
             TEXTURE2D(_BumpMap);
             SAMPLER(sampler_BumpMap);
 
-            sampler2D _TesselationMap;
+            TEXTURE2D(_DepthMap);
+            SAMPLER(sampler_DepthMap);
 
             CBUFFER_START(UnityPerMaterial)
                 half4 _BaseColor;
@@ -167,11 +168,11 @@ Shader "Custom/Combined"
 
                 float2 center = (uv0 + uv1 + uv2) / 3.0;
 
-                float e0 = tex2Dlod(_TesselationMap, float4(mid12, 0, 0)).r;
-                float e1 = tex2Dlod(_TesselationMap, float4(mid20, 0, 0)).r;
-                float e2 = tex2Dlod(_TesselationMap, float4(mid01, 0, 0)).r;
+                float e0 = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(mid12, 0, 0), 0).r;
+                float e1 = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(mid20, 0, 0), 0).r;
+                float e2 = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(mid01, 0, 0), 0).r;
 
-                float c = tex2Dlod(_TesselationMap, float4(center, 0, 0)).r;
+                float c = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(center, 0, 0), 0).r;
 
                 // Edge tess factors = sampled at edge midpoints
                 factors.edge[0] = e0 * _TesselationAmount + 1.0;
@@ -220,7 +221,7 @@ Shader "Custom/Combined"
                 tangentWS.xyz = normalize(tangentWS.xyz);
 
                 // Shift vertices down where tesselated/texture is white
-                float factor = tex2Dlod(_TesselationMap, float4(duv, 0, 0)).r;
+                float factor = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(duv, 0, 0), 0).r;
                 //float factor = length(f) / 3.0;
                 positionWS.y -= factor * _DisplacementAmount;
                 // ^^^^^
@@ -250,9 +251,9 @@ Shader "Custom/Combined"
                 o2 = (l2 <= _NormalCorrectionOffset) ? v2 : o2;
 
                 // Sample displacement values in a triangle around tessellated vertex
-                float s0 = tex2Dlod(_TesselationMap, float4(duv + o0, 0, 0)).r;
-                float s1 = tex2Dlod(_TesselationMap, float4(duv + o1, 0, 0)).r;
-                float s2 = tex2Dlod(_TesselationMap, float4(duv + o2, 0, 0)).r;
+                float s0 = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(duv + o0, 0, 0), 0).r;
+                float s1 = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(duv + o1, 0, 0), 0).r;
+                float s2 = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(duv + o2, 0, 0), 0).r;
 
                 // Take tangent and bi-tangent
                 float3 t1 = (patch[1].positionWS - float3(0, s1 * _DisplacementAmount, 0))

@@ -1,0 +1,25 @@
+#pragma kernel CSMain
+#pragma target 4.5
+
+Texture2D<float4> _TexA;     // input A
+Texture2D<float4> _TexB;     // persistent input B
+RWTexture2D<float4> _Result; // temporary output
+
+int _Width;
+int _Height;
+float _DeltaTime;
+float _SnowRate;
+
+[numthreads(8, 8, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Width || id.y >= _Height)
+        return;
+
+    int2 uv = int2(id.xy);
+    float4 a = _TexA[uv];
+    float4 b = _TexB[uv];
+
+    // combine with new depth map and add falling snow
+    _Result[uv] = saturate(a + b - _SnowRate * _DeltaTime);
+}

@@ -25,7 +25,7 @@ Material:
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
-  - _PARTITIONING_INTEGER
+  - _PARTITIONING_FRACTIONALEVEN
   m_InvalidKeywords: []
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
@@ -83,7 +83,7 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _TesselationMap:
-        m_Texture: {fileID: 8400000, guid: b493c32330d8826459281f2fc06a7db9, type: 2}
+        m_Texture: {fileID: 8400000, guid: 1bc7b33f2c2f2504b95230172f7fd42a, type: 2}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - unity_Lightmaps:
@@ -112,7 +112,7 @@ Material:
     - _Cutoff: 0.5
     - _DetailAlbedoMapScale: 1
     - _DetailNormalMapScale: 1
-    - _DisplacementAmount: 1.168
+    - _DisplacementAmount: 0.927
     - _DstBlend: 0
     - _DstBlendAlpha: 0
     - _EnvironmentReflections: 1
@@ -123,7 +123,7 @@ Material:
     - _NormalCorrectionOffset: 0.00826
     - _OcclusionStrength: 1
     - _Parallax: 0.005
-    - _Partitioning: 0
+    - _Partitioning: 2
     - _QueueOffset: 0
     - _ReceiveShadows: 1
     - _SSSWrap: 0.8

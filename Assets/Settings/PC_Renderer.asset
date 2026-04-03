@@ -15,6 +15,21 @@ MonoBehaviour:
   m_Active: 1
   material: {fileID: 2100000, guid: c05845a6717c0f44b848dad198d944c9, type: 2}
   targetCameraName: Depth Camera
+--- !u!114 &-946092310947144895
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c43150576198b2f479c70237501c8744, type: 3}
+  m_Name: SnowAccumulationFeature
+  m_EditorClassIdentifier: Assembly-CSharp::SnowAccumulationFeature
+  m_Active: 1
+  accumulationMaterial: {fileID: 2100000, guid: 374d1204fddead5479f38ec9014ff404, type: 2}
+  footprintRT: {fileID: 8400000, guid: b493c32330d8826459281f2fc06a7db9, type: 2}
 --- !u!114 &11400000
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -57,7 +72,7 @@ MonoBehaviour:
     m_Bits: 4294967295
   m_DefaultStencilState:
     overrideStencilState: 0
-    stencilReference: 1
+    stencilReference: 0
     stencilCompareFunction: 3
     passOperation: 2
     failOperation: 0
