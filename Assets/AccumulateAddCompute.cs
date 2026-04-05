@@ -10,6 +10,7 @@ public class AccumulateAddCompute : MonoBehaviour
 
     [Header("Run")]
     [SerializeField] private bool runEveryFrame = true;
+    [SerializeField] private bool accumulate = true;
 
     private RenderTexture tempResult;
     private int kernel;
@@ -21,6 +22,7 @@ public class AccumulateAddCompute : MonoBehaviour
     private static readonly int HeightId = Shader.PropertyToID("_Height");
     private static readonly int DeltaTimeId = Shader.PropertyToID("_DeltaTime");
     private static readonly int SnowRateId = Shader.PropertyToID("_SnowRate");
+    private static readonly int AccumulateId = Shader.PropertyToID("_Accumulate");
 
     private void Awake()
     {
@@ -81,6 +83,7 @@ public class AccumulateAddCompute : MonoBehaviour
         addShader.SetInt(HeightId, textureA.height);
         addShader.SetFloat(DeltaTimeId, Time.deltaTime);
         addShader.SetFloat(SnowRateId, snowRate);
+        addShader.SetBool(AccumulateId, accumulate);
 
         addShader.SetTexture(kernel, TexAId, textureA);
         addShader.SetTexture(kernel, TexBId, textureB);

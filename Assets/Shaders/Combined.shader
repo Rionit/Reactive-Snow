@@ -25,6 +25,13 @@ Shader "Custom/Combined"
         [Space]
         _DisplacementAmount("Displacement Amount", Range(0.0, 2.5)) = 0.25
         _NormalCorrectionOffset("Normal Correction Offset", Range(0.0, 0.02)) = 0.01
+        _DarkeningAmount("Darkening Amount", Range(0.0, 1.0)) = 0.75
+        
+        [Header(Filter Settings)]
+        [Space]
+        _BlurAmount("Blur Amount", Range(0, 3)) = 1
+        _TexelSize("Texel Size", Range(0, 1024)) = 1024
+        [Toggle(_DEBUG_EDGES)] _DebugEdges("Debug Edges", Float) = 0
     }
 
     SubShader
@@ -48,6 +55,7 @@ Shader "Custom/Combined"
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS 
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS_SCREEN
+            #pragma shader_feature _DEBUG_EDGES
 
             #pragma shader_feature _PARTITIONING_INTEGER _PARTITIONING_FRACTIONALODD _PARTITIONING_FRACTIONALEVEN _PARTITIONING_POW2
 
@@ -116,6 +124,10 @@ Shader "Custom/Combined"
                 float _TesselationAmount;
                 float _DisplacementAmount;
                 float _NormalCorrectionOffset;
+                float _DarkeningAmount;
+
+                float _TexelSize;
+                float _BlurAmount;
             CBUFFER_END
 
             ControlPoint vert(Attributes IN)
@@ -126,6 +138,80 @@ Shader "Custom/Combined"
                 OUT.tangentWS = float4(TransformObjectToWorldDir(IN.tangent.xyz), IN.tangent.w);
                 OUT.uv = TRANSFORM_TEX(IN.uv, _BumpMap);
                 return OUT;
+            }
+
+            float SampleDepth(float2 uv)
+            {
+                return SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(uv,0,0), 0).r;
+            }
+
+            // 3x3 Gaussian blur
+            float BlurDepth(float2 uv, float2 texelSize)
+            {
+                float kernel[9] =
+                {
+                    1,2,1,
+                    2,4,2,
+                    1,2,1
+                };
+
+                float2 offsets[9] =
+                {
+                    float2(-1,-1), float2(0,-1), float2(1,-1),
+                    float2(-1, 0), float2(0, 0), float2(1, 0),
+                    float2(-1, 1), float2(0, 1), float2(1, 1)
+                };
+
+                float sum = 0;
+                float weight = 0;
+
+                for(int i = 0; i < 9; i++)
+                {
+                    float2 uvOffset = uv + offsets[i] * texelSize * _BlurAmount;
+                    float s = SampleDepth(uvOffset);
+                    sum += s * kernel[i];
+                    weight += kernel[i];
+                }
+
+                return sum / weight;
+            }
+
+            // Sobel edge detection (X + Y)
+            float EdgeStrength(float2 uv, float2 texelSize)
+            {
+                float gx[9] =
+                {
+                    -1,0,1,
+                    -2,0,2,
+                    -1,0,1
+                };
+
+                float gy[9] =
+                {
+                    -1,-2,-1,
+                     0, 0, 0,
+                     1, 2, 1
+                };
+
+                float2 offsets[9] =
+                {
+                    float2(-1,-1), float2(0,-1), float2(1,-1),
+                    float2(-1, 0), float2(0, 0), float2(1, 0),
+                    float2(-1, 1), float2(0, 1), float2(1, 1)
+                };
+
+                float sx = 0;
+                float sy = 0;
+
+                for(int i = 0; i < 9; i++)
+                {
+                    float2 uvOffset = uv + offsets[i] * texelSize * _BlurAmount;
+                    float s = BlurDepth(uvOffset, texelSize);
+                    sx += s * gx[i];
+                    sy += s * gy[i];
+                }
+
+                return sqrt(sx * sx + sy * sy);
             }
 
             // Hull shader:
@@ -157,6 +243,8 @@ Shader "Custom/Combined"
             {
                 TesselationFactors factors;
 
+                float2 texelSize = float2(1.0/_TexelSize, 1.0/_TexelSize);
+
                 // 1.0 - uv.x because ortho camera looking up from bottom
                 float2 uv0 = float2(1.0 - patch[0].uv.x, patch[0].uv.y);
                 float2 uv1 = float2(1.0 - patch[1].uv.x, patch[1].uv.y);
@@ -168,11 +256,11 @@ Shader "Custom/Combined"
 
                 float2 center = (uv0 + uv1 + uv2) / 3.0;
 
-                float e0 = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(mid12, 0, 0), 0).r;
-                float e1 = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(mid20, 0, 0), 0).r;
-                float e2 = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(mid01, 0, 0), 0).r;
+                float e0 = EdgeStrength(mid12, texelSize);
+                float e1 = EdgeStrength(mid20, texelSize);
+                float e2 = EdgeStrength(mid01, texelSize);
 
-                float c = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(center, 0, 0), 0).r;
+                float c = EdgeStrength(center, texelSize);
 
                 // Edge tess factors = sampled at edge midpoints
                 factors.edge[0] = e0 * _TesselationAmount + 1.0;
@@ -221,8 +309,8 @@ Shader "Custom/Combined"
                 tangentWS.xyz = normalize(tangentWS.xyz);
 
                 // Shift vertices down where tesselated/texture is white
-                float factor = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(duv, 0, 0), 0).r;
-                //float factor = length(f) / 3.0;
+                float2 texelSize = float2(1.0/_TexelSize, 1.0/_TexelSize);
+                float factor = BlurDepth(duv, texelSize);
                 positionWS.y -= factor * _DisplacementAmount;
                 // ^^^^^
                 // Because we displacing the vertices, we need to recalculate
@@ -276,6 +364,10 @@ Shader "Custom/Combined"
                 // Convert to clip space for rasterization
                 OUT.positionHCS = TransformWorldToHClip(positionWS);
                 OUT.uv = TRANSFORM_TEX(uv, _BumpMap);
+                // Makes the snow darker where displaced down
+                // and looks more "wet"
+                // (Delete me if stupid :D but imo looks nice - F.)
+                OUT.tangent2.z = saturate(factor) * _DarkeningAmount;
 
                 return OUT;
             }
@@ -284,6 +376,16 @@ Shader "Custom/Combined"
             {
                 half wrap = _SSSWrap;
                 return max(0,(NDotL + wrap) / (wrap + 1));
+            }
+
+            half4 GetEdgeDebug(float2 uv)
+            {
+                float2 texelSize = float2(1.0/_TexelSize, 1.0/_TexelSize);
+                float2 duv = float2(1.0 - uv.x, uv.y);
+
+                float edge = saturate(EdgeStrength(duv, texelSize) * 5.0);
+
+                return half4(half3(1,0,0) * edge, edge);
             }
 
             half4 frag(Varyings IN) : SV_Target
@@ -317,8 +419,16 @@ Shader "Custom/Combined"
 
                 half3 color = directColor + SSScolor;
 
+                #ifdef _DEBUG_EDGES
+                    half4 edgeData = GetEdgeDebug(IN.uv);
+                    half3 baseColor = 0.3h * _BaseColor.rgb + 0.7h * color;
+                    return half4(lerp(baseColor, edgeData.rgb, edgeData.a), 1);
+                #else
+                    return half4(0.3h * _BaseColor.rgb + 0.7h * color, 1);
+                #endif
+                                
                 // Adds ambient color (base color * 0.3) and returns the final color
-                return half4(0.3h * _BaseColor.rgb + 0.7h * color, 1);
+                //return half4(0.3h * _BaseColor.rgb + 0.7h * color, 1);
             }
 
             ENDHLSL

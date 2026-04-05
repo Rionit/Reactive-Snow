@@ -46,6 +46,10 @@ Material:
         m_Texture: {fileID: 2800000, guid: 71e3bb8445ab53ee6b825e6f2096c38a, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _DepthMap:
+        m_Texture: {fileID: 8400000, guid: 1bc7b33f2c2f2504b95230172f7fd42a, type: 2}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _DetailAlbedoMap:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
@@ -105,35 +109,41 @@ Material:
     - _AlphaToMask: 0
     - _Blend: 0
     - _BlendModePreserveSpecular: 1
+    - _BlurAmount: 3
     - _BumpScale: 1
     - _ClearCoatMask: 0
     - _ClearCoatSmoothness: 0
     - _Cull: 2
     - _Cutoff: 0.5
+    - _DarkeningAmount: 0.9
+    - _DarkeningFactor: 1
+    - _DebugEdges: 0
     - _DetailAlbedoMapScale: 1
     - _DetailNormalMapScale: 1
-    - _DisplacementAmount: 0.927
+    - _DisplacementAmount: 0.5
     - _DstBlend: 0
     - _DstBlendAlpha: 0
+    - _EdgeStrength: 1
     - _EnvironmentReflections: 1
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
     - _Metallic: 0
-    - _NormalCorrectionOffset: 0.00826
+    - _NormalCorrectionOffset: 0.015
     - _OcclusionStrength: 1
     - _Parallax: 0.005
     - _Partitioning: 2
     - _QueueOffset: 0
     - _ReceiveShadows: 1
-    - _SSSWrap: 0.8
+    - _SSSWrap: 1
     - _Smoothness: 0.4
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
     - _Surface: 0
-    - _TesselationAmount: 6
+    - _TesselationAmount: 4
+    - _TexelSize: 256
     - _WorkflowMode: 1
     - _XRMotionVectorsPass: 1
     - _ZWrite: 1
@@ -144,5 +154,6 @@ Material:
     - _SSSColor: {r: 0.67058825, g: 0.69411767, b: 0.98039216, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
     - _SpecularColor: {r: 1, g: 1, b: 1, a: 1}
+    - _TexelSize: {r: 0.001, g: 0.001, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
