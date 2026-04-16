@@ -13,21 +13,28 @@ Shader "Custom/Snow"
 
     SubShader
     {
-        Tags { "RenderPipeline" = "UniversalPipeline" }
+        Tags 
+        { 
+            "RenderPipeline" = "UniversalPipeline" 
+        
+        }
 
         Pass
         {
+
+
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
 
-            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS 
-            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
-            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS_SCREEN
+            // This multi_compile declaration is required for the Forward+ rendering path
+            #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/BRDF.hlsl"
+            #include "Packages/com.unity.render-pipelines.core/ShaderLibrary/CommonMaterial.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/RealtimeLights.hlsl"
 
             struct Attributes
             {
@@ -80,11 +87,45 @@ Shader "Custom/Snow"
             TEXTURE2D(_BumpMap);
             SAMPLER(sampler_BumpMap);
 
+            SAMPLER2D(_lastCameraDepthTexture);
 
             float GetDiff(half NDotL)
             {
                 half wrap = _SSSWrap;
                 return max(0,(NDotL + wrap) / (wrap + 1));
+            }
+
+            float3 Specular(BRDFData brdfData, InputData inputData, half3 worldNormal, half3 worldViewDir)
+            {
+                    Light mainLight = GetMainLight();
+                    // Sets up BRDF inputs
+                    half3 lightDir = normalize(mainLight.direction);
+                    half3 lightColor = mainLight.color;
+                    half attenuation = mainLight.distanceAttenuation * mainLight.shadowAttenuation;
+
+                    half3 brdfSpec = DirectBRDFSpecular(brdfData, worldNormal, lightDir, worldViewDir) * brdfData.specular * attenuation;
+
+                    #if defined(_ADDITIONAL_LIGHTS)
+
+
+                    #if USE_CLUSTER_LIGHT_LOOP
+                    UNITY_LOOP for (uint lightIndex = 0; lightIndex < min(URP_FP_DIRECTIONAL_LIGHTS_COUNT, MAX_VISIBLE_LIGHTS); lightIndex++)
+                    {
+                        Light additionalLight = GetAdditionalLight(lightIndex, inputData.positionWS, half4(1,1,1,1));
+                        brdfSpec +=  DirectBRDFSpecular(brdfData, worldNormal, normalize(additionalLight.direction), worldViewDir) * brdfData.specular * additionalLight.distanceAttenuation * additionalLight.shadowAttenuation;
+                    }
+                    #endif
+
+
+                    uint lightCount = GetAdditionalLightsCount();
+                    LIGHT_LOOP_BEGIN(lightCount)
+                        Light additionalLight = GetAdditionalLight(lightIndex, inputData.positionWS, half4(1,1,1,1));
+                        brdfSpec +=  DirectBRDFSpecular(brdfData, worldNormal, normalize(additionalLight.direction), worldViewDir) * brdfData.specular * additionalLight.distanceAttenuation * additionalLight.shadowAttenuation;
+                    LIGHT_LOOP_END
+
+                    #endif
+                    return brdfSpec;
+
             }
 
             half4 frag(Varyings IN) : SV_Target
@@ -95,10 +136,11 @@ Shader "Custom/Snow"
                 half3 worldNormal = normalize(TransformTangentToWorld(normalTS, tangentToWorld));
 
                 // Sets up the BRDF data from the main directional light
-                Light mainLight = GetMainLight();
+                
                 BRDFData brdfData;
                 InitializeBRDFData(_BaseColor.rgb, 0.3h, _SpecularColor.rgb, _Smoothness, _BaseColor.a, brdfData);
 
+                Light mainLight = GetMainLight();
                 // Sets up BRDF inputs
                 half3 lightDir = normalize(mainLight.direction);
                 half3 lightColor = mainLight.color;
@@ -107,11 +149,20 @@ Shader "Custom/Snow"
                 half NdotL = dot(worldNormal, lightDir);
                 half attenuation = mainLight.distanceAttenuation * mainLight.shadowAttenuation;
                 
+                half3 brdfDiff = brdfData.diffuse / 3.14159h;
+
+                InputData inputData = (InputData)0;
+                inputData.positionWS = IN.worldPos;
+                inputData.normalWS = worldNormal;
+                inputData.viewDirectionWS = worldViewDir;
+
+                half3 brdfSpec = Specular(brdfData, inputData, worldNormal, worldViewDir)/* / GetAdditionalLightsCount()*/;
+                
                 // Calculates direct BRDF value
-                half3 brdf = DirectBRDF(brdfData, worldNormal, lightDir, worldViewDir);
+                half3 brdf = brdfDiff + brdfSpec;
 
                 // Applies the BRDF color
-                half3 directColor = (brdf * max(0,NdotL)) * lightColor * attenuation;
+                half3 directColor = brdf;
 
                 // Adds SSS(Subsurface cattering) color using wrap (the tint is visible around the edge)
                 half3 SSScolor = max(0, abs(GetDiff(NdotL)) - abs(NdotL))* _SSSColor.rgb;
