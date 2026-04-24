@@ -13,7 +13,9 @@ class LookAtObjectEditor : Editor
 
         if(GUILayout.Button("Look At Target") && lookAtObject.target != null)
         {
-            lookAtObject.source.LookAt(lookAtObject.target);
+            lookAtObject.source.transform.LookAt(lookAtObject.target);
+            Shader.SetGlobalMatrix("_WorldToLight", lookAtObject.source.worldToCameraMatrix);
+            Shader.SetGlobalMatrix("_LightProjection", lookAtObject.source.projectionMatrix);
         }
     }
 }
@@ -30,14 +32,19 @@ public class LookAtObject : MonoBehaviour
         if(source != null && target != null)
         {
             source.transform.LookAt(target);
+            Shader.SetGlobalMatrix("_WorldToLight", source.worldToCameraMatrix);
+            Shader.SetGlobalMatrix("_LightProjection", source.projectionMatrix);
         }
     }
 
     void Awake()
     {
-        source.depthTextureMode = DepthTextureMode.Depth;
-        Shader.SetGlobalMatrix("_WorldToLight", source.worldToCameraMatrix);
-        Shader.SetGlobalMatrix("_LightProjection", source.projectionMatrix);
+        if(source != null)
+        {
+            source.depthTextureMode = DepthTextureMode.Depth;
+            Shader.SetGlobalMatrix("_WorldToLight", source.worldToCameraMatrix);
+            Shader.SetGlobalMatrix("_LightProjection", source.projectionMatrix);
+        }
     }
 
     void Update()
@@ -45,6 +52,8 @@ public class LookAtObject : MonoBehaviour
         if(source != null && target != null)
         {
             source.transform.LookAt(target);
+            Shader.SetGlobalMatrix("_WorldToLight", source.worldToCameraMatrix);
+            Shader.SetGlobalMatrix("_LightProjection", source.projectionMatrix);
         }
     }
 

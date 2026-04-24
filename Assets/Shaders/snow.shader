@@ -9,19 +9,69 @@ Shader "Custom/Snow"
         _SpecularColor("Specular Color", Color) = (1, 1, 1, 1)
         _SSSColor("Subsurface Scattering Color", Color) = (0.8, 0.8, 1, 1)
         _SSSWrap("Subsurface Scattering Wrap", Range(0, 1)) = 0.8
+
+        _LightTexture("Light Texture", 2D) = "black" {}
     }
 
     SubShader
     {
-        Tags 
-        { 
-            "RenderPipeline" = "UniversalPipeline" 
-        
+        Tags
+        {
+            "RenderPipeline" = "UniversalPipeline"
         }
+
+        /*Pass
+        {
+            Name "LightDepth"
+            Tags { "LightMode" = "UniversalForward" }
+
+            ZWrite On
+            ZTest LEqual
+
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+            struct Attributes
+            {
+                float4 positionOS : POSITION;
+            };
+
+            struct Vari
+            {
+                float4 positionHCS : SV_POSITION;
+                float linearDepth : TEXCOORD0;
+            };
+
+
+            float4x4 _WorldToLight;
+            float4x4 _LightProjection;
+
+            Vari vert(Attributes IN)
+            {
+                Vari OUT;
+                float3 worldPos = TransformObjectToWorld(IN.positionOS.xyz);
+                float4 lightView = mul(_LightProjection, mul(_WorldToLight, float4(worldPos, 1.0)));
+                OUT.positionHCS = lightView;
+
+                half viewDepth = max(1.0/lightView.z, 0.0);
+                OUT.linearDepth = viewDepth;
+                return OUT;
+            }
+
+            half4 frag(Vari IN) : SV_Target
+            {
+                return half4(IN.linearDepth, IN.linearDepth, IN.linearDepth, 1.0);
+            }
+            ENDHLSL
+        }*/
 
         Pass
         {
-
+            Name "Forward"
+            Tags { "LightMode" = "UniversalForward" }
 
             HLSLPROGRAM
             #pragma vertex vert
@@ -56,6 +106,8 @@ Shader "Custom/Snow"
 
                 // World position for View dir
                 float3 worldPos : TEXCOORD4;
+
+                float4 lightPos : TEXCOORD5; // Position in light space for shadow mapping
             };
 
             CBUFFER_START(UnityPerMaterial)
@@ -67,13 +119,17 @@ Shader "Custom/Snow"
                 half _SSSWrap;
             CBUFFER_END
 
+            float4x4 _WorldToLight;
+            float4x4 _LightProjection;
+
             Varyings vert(Attributes IN)
             {
                 Varyings OUT;
                 OUT.positionHCS = TransformObjectToHClip(IN.positionOS.xyz);
                 OUT.worldPos = TransformObjectToWorld(IN.positionOS.xyz);
                 OUT.uv = TRANSFORM_TEX(IN.uv, _BumpMap);
-                
+                OUT.lightPos = mul(_LightProjection, mul(_WorldToLight, float4(OUT.worldPos, 1.0)));
+
                 // Creates the TBN matrix
                 VertexNormalInputs tbn = GetVertexNormalInputs(IN.normalOS, IN.tangent);
                 
@@ -87,7 +143,11 @@ Shader "Custom/Snow"
             TEXTURE2D(_BumpMap);
             SAMPLER(sampler_BumpMap);
 
-            SAMPLER2D(_lastCameraDepthTexture);
+            TEXTURE2D(_LightTexture);
+            SAMPLER(sampler_LightTexture);
+
+            TEXTURE2D(_LightZBuffer);
+            SAMPLER(sampler_LightZBuffer);
 
             float GetDiff(half NDotL)
             {
@@ -107,7 +167,6 @@ Shader "Custom/Snow"
 
                     #if defined(_ADDITIONAL_LIGHTS)
 
-
                     #if USE_CLUSTER_LIGHT_LOOP
                     UNITY_LOOP for (uint lightIndex = 0; lightIndex < min(URP_FP_DIRECTIONAL_LIGHTS_COUNT, MAX_VISIBLE_LIGHTS); lightIndex++)
                     {
@@ -115,7 +174,6 @@ Shader "Custom/Snow"
                         brdfSpec +=  DirectBRDFSpecular(brdfData, worldNormal, normalize(additionalLight.direction), worldViewDir) * brdfData.specular * additionalLight.distanceAttenuation * additionalLight.shadowAttenuation;
                     }
                     #endif
-
 
                     uint lightCount = GetAdditionalLightsCount();
                     LIGHT_LOOP_BEGIN(lightCount)
@@ -125,7 +183,6 @@ Shader "Custom/Snow"
 
                     #endif
                     return brdfSpec;
-
             }
 
             half4 frag(Varyings IN) : SV_Target
@@ -169,7 +226,13 @@ Shader "Custom/Snow"
 
                 half3 color = directColor + SSScolor;
                 // Adds ambient color (base color * 0.3) and returns the final color
-                return half4(0.3h * _BaseColor.rgb + 0.7h * color, 1);
+                //return half4(0.3h * _BaseColor.rgb + 0.7h * color, 1);
+
+
+                //half3 storedDepth = SAMPLE_TEXTURE2D(_LightZBuffer, sampler_LightZBuffer, IN.uv).rgb;
+                float3 storedDepth = SAMPLE_TEXTURE2D(_LightTexture, sampler_LightTexture, IN.lightPos.xy).rgb;
+
+                return half4(color, 0.5);
             }
             ENDHLSL
         }
