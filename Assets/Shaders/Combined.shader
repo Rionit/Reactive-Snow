@@ -5,7 +5,8 @@ Shader "Custom/Combined"
         [Header(Main Settings)]
         [Space]
         [MainColor] _BaseColor("Base Color", Color) = (1, 1, 1, 1)
-
+        [NoScaleOffset] _LightDepthMap ("Light Depth Map", 2D) = "black" {} // for self shadowing
+        
         [Header(Snow Material Settings)]
         [Space]
         [Normal] _BumpMap("Normal Map", 2D) = "bump" {}
@@ -97,6 +98,9 @@ Shader "Custom/Combined"
                 float3 worldPos : TEXCOORD4;
             };
 
+            float4x4 _WorldToLight;
+            float4x4 _LightProjection;
+
             // Tessellation factors (how much to subdivide)
             struct TesselationFactors
             {
@@ -109,6 +113,9 @@ Shader "Custom/Combined"
 
             TEXTURE2D(_DepthMap);
             SAMPLER(sampler_DepthMap);
+
+            TEXTURE2D(_LightDepthMap);
+            SAMPLER(sampler_LightDepthMap);
 
             CBUFFER_START(UnityPerMaterial)
                 half4 _BaseColor;
@@ -395,6 +402,14 @@ Shader "Custom/Combined"
                 half3x3 tangentToWorld = half3x3(IN.tangent0, IN.tangent1, IN.tangent2);
                 half3 worldNormal = normalize(TransformTangentToWorld(normalTS, tangentToWorld));
 
+                // Self shadowing
+                float4 lightPos = mul(_WorldToLight, float4(IN.worldPos, 1.0));
+                lightPos.z = -lightPos.z;
+                float4 lightUV = mul(_LightProjection, lightPos);
+                float3 lightClip = lightUV.xyz / lightUV.w;
+                lightClip = (lightClip*0.5)+0.5;
+                float3 storedDepth = SAMPLE_TEXTURE2D(_LightDepthMap, sampler_LightDepthMap, lightClip.xy).rgb;
+                
                 // Sets up the BRDF data from the main directional light
                 Light mainLight = GetMainLight();
                 BRDFData brdfData;
@@ -419,6 +434,14 @@ Shader "Custom/Combined"
 
                 half3 color = directColor + SSScolor;
 
+                float epsilon = 0.01;
+                
+                if (1/lightPos.z - storedDepth.r <= epsilon)
+                    return float4(1.0,1.0,1.0,1);
+                if (1/lightPos.z - storedDepth.r > epsilon)
+                    return float4 (0.0,0.0,0.0,1);
+                return float4(0.5,0,0,1);
+                
                 #ifdef _DEBUG_EDGES
                     half4 edgeData = GetEdgeDebug(IN.uv);
                     half3 baseColor = 0.3h * _BaseColor.rgb + 0.7h * color;
