@@ -8,8 +8,16 @@ RWTexture2D<float4> _Result; // temporary output
 int _Width;
 int _Height;
 float _DeltaTime;
-float _SnowRate;
+float _SnowflakeHeight;
+float _SnowflakeChance;
 bool _Accumulate;
+
+
+// https://discussions.unity.com/t/generate-random-float-between-0-and-1-in-shader/728060
+float rand(float2 co)
+{
+    return frac(sin(dot(co, float2(12.9898, 78.233))) * 43758.5453);
+}
 
 [numthreads(8, 8, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
@@ -21,9 +29,14 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float4 a = _TexA[uv];
     float4 b = _TexB[uv];
 
+    _Result[uv] = saturate(a + b);
+
+    float r = rand(id.xy * _DeltaTime);
+    
     // combine with new depth map and add falling snow
-    if (_Accumulate)
-        _Result[uv] = saturate(a + b - _SnowRate * _DeltaTime);
+    if (_Accumulate && r < _SnowflakeChance)
+        _Result[uv] -= _SnowflakeHeight * _DeltaTime;
+        // _Result[uv] = saturate(a + b - _SnowRate * _DeltaTime);
     else
         _Result[uv] = saturate(a + b);
 }

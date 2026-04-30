@@ -7,6 +7,11 @@ Shader "Custom/Combined"
         [MainColor] _BaseColor("Base Color", Color) = (1, 1, 1, 1)
         [NoScaleOffset] _LightDepthMap ("Light Depth Map", 2D) = "black" {} // for self shadowing
         
+        [Header(Sparkle Settings)]
+        _SparkleIntensity("Sparkle Intensity", Range(0, 5)) = 1.5
+        _SparkleScale("Sparkle Scale", Range(10, 500)) = 150
+        _SparkleThreshold("Sparkle Threshold", Range(0.8, 0.999)) = 0.95
+                
         [Header(Snow Material Settings)]
         [Space]
         [Normal] _BumpMap("Normal Map", 2D) = "bump" {}
@@ -33,6 +38,7 @@ Shader "Custom/Combined"
         _BlurAmount("Blur Amount", Range(0, 3)) = 1
         _TexelSize("Texel Size", Range(0, 1024)) = 1024
         [Toggle(_DEBUG_EDGES)] _DebugEdges("Debug Edges", Float) = 0
+        [Toggle(_DEBUG_NORMALS)] _DebugNormals("Debug Normals", Float) = 0
     }
 
     SubShader
@@ -57,6 +63,7 @@ Shader "Custom/Combined"
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS_CASCADE
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS_SCREEN
             #pragma shader_feature _DEBUG_EDGES
+            #pragma shader_feature _DEBUG_NORMALS
 
             #pragma shader_feature _PARTITIONING_INTEGER _PARTITIONING_FRACTIONALODD _PARTITIONING_FRACTIONALEVEN _PARTITIONING_POW2
 
@@ -118,6 +125,10 @@ Shader "Custom/Combined"
             SAMPLER(sampler_LightDepthMap);
 
             CBUFFER_START(UnityPerMaterial)
+                float _SparkleIntensity;
+                float _SparkleScale;
+                float _SparkleThreshold;
+            
                 half4 _BaseColor;
                 float4 _BaseMap_ST;
                 float4 _BumpMap_ST;
@@ -319,6 +330,7 @@ Shader "Custom/Combined"
                 float2 texelSize = float2(1.0/_TexelSize, 1.0/_TexelSize);
                 float factor = BlurDepth(duv, texelSize);
                 positionWS.y -= factor * _DisplacementAmount;
+                    
                 // ^^^^^
                 // Because we displacing the vertices, we need to recalculate
                 // the normals.
@@ -395,63 +407,78 @@ Shader "Custom/Combined"
                 return half4(half3(1,0,0) * edge, edge);
             }
 
+            float Hash21(float2 p)
+            {
+                p = frac(p * float2(123.34, 456.21));
+                p += dot(p, p + 45.32);
+                return frac(p.x * p.y);
+            }
+
             half4 frag(Varyings IN) : SV_Target
             {
-                // Applies the bump to the normal
+                // Normal mapping
                 half3 normalTS = UnpackNormal(SAMPLE_TEXTURE2D(_BumpMap, sampler_BumpMap, IN.uv));
                 half3x3 tangentToWorld = half3x3(IN.tangent0, IN.tangent1, IN.tangent2);
                 half3 worldNormal = normalize(TransformTangentToWorld(normalTS, tangentToWorld));
 
-                // Self shadowing
-                float4 lightPos = mul(_WorldToLight, float4(IN.worldPos, 1.0));
-                lightPos.z = -lightPos.z;
-                float4 lightUV = mul(_LightProjection, lightPos);
-                float3 lightClip = lightUV.xyz / lightUV.w;
-                lightClip = (lightClip*0.5)+0.5;
-                float3 storedDepth = SAMPLE_TEXTURE2D(_LightDepthMap, sampler_LightDepthMap, lightClip.xy).rgb;
-                
-                // Sets up the BRDF data from the main directional light
+                // Lighting setup
                 Light mainLight = GetMainLight();
                 BRDFData brdfData;
                 InitializeBRDFData(_BaseColor.rgb, 0.3h, _SpecularColor.rgb, _Smoothness, _BaseColor.a, brdfData);
 
-                // Sets up BRDF inputs
                 half3 lightDir = normalize(mainLight.direction);
                 half3 lightColor = mainLight.color;
-                half3 worldViewDir = normalize(GetWorldSpaceViewDir(IN.worldPos));
+                half3 viewDir = normalize(GetWorldSpaceViewDir(IN.worldPos));
 
                 half NdotL = dot(worldNormal, lightDir);
                 half attenuation = mainLight.distanceAttenuation * mainLight.shadowAttenuation;
-                
-                // Calculates direct BRDF value
-                half3 brdf = DirectBRDF(brdfData, worldNormal, lightDir, worldViewDir);
 
-                // Applies the BRDF color
-                half3 directColor = (brdf * max(0,NdotL)) * lightColor * attenuation;
+                half3 brdf = DirectBRDF(brdfData, worldNormal, lightDir, viewDir);
+                half3 directColor = (brdf * max(0, NdotL)) * lightColor * attenuation;
 
-                // Adds SSS(Subsurface cattering) color using wrap (the tint is visible around the edge)
-                half3 SSScolor = max(0, abs(GetDiff(NdotL)) - abs(NdotL))* _SSSColor.rgb;
+                // SSS
+                half3 SSScolor = max(0, abs(GetDiff(NdotL)) - abs(NdotL)) * _SSSColor.rgb;
 
                 half3 color = directColor + SSScolor;
 
-                float epsilon = 0.01;
-                
-                if (1/lightPos.z - storedDepth.r <= epsilon)
-                    return float4(1.0,1.0,1.0,1);
-                if (1/lightPos.z - storedDepth.r > epsilon)
-                    return float4 (0.0,0.0,0.0,1);
-                return float4(0.5,0,0,1);
-                
-                #ifdef _DEBUG_EDGES
-                    half4 edgeData = GetEdgeDebug(IN.uv);
-                    half3 baseColor = 0.3h * _BaseColor.rgb + 0.7h * color;
-                    return half4(lerp(baseColor, edgeData.rgb, edgeData.a), 1);
-                #else
-                    return half4(0.3h * _BaseColor.rgb + 0.7h * color, 1);
-                #endif
-                                
-                // Adds ambient color (base color * 0.3) and returns the final color
-                //return half4(0.3h * _BaseColor.rgb + 0.7h * color, 1);
+                // SNOW SPARKLE
+                float3 halfVec = normalize(lightDir + viewDir);
+                float sparkleDot = saturate(dot(worldNormal, halfVec));
+
+                // Layer 1 (main sparkles)
+                float2 uv1 = IN.worldPos.xz * _SparkleScale;
+                float noise1 = Hash21(floor(uv1));
+
+                float sparkle1 = pow(sparkleDot, 200.0);
+                sparkle1 *= step(_SparkleThreshold, noise1);
+
+                // Layer 2 (smaller, sharper sparkles)
+                float2 uv2 = IN.worldPos.xz * (_SparkleScale * 2.5);
+                float noise2 = Hash21(floor(uv2));
+
+                float sparkle2 = pow(sparkleDot, 400.0);
+                sparkle2 *= step(_SparkleThreshold + 0.02, noise2);
+
+                // Combine layers
+                float sparkle = (sparkle1 + sparkle2 * 0.5);
+
+                sparkle *= _SparkleIntensity;
+
+                // Slight color variation
+                float3 sparkleColor = float3(1.0, 0.97, 0.92);
+                color += sparkle * sparkleColor * lightColor;
+
+            #ifdef _DEBUG_NORMALS
+                return float4(worldNormal, 1.0);
+            #endif
+
+            #ifdef _DEBUG_EDGES
+                half4 edgeData = GetEdgeDebug(IN.uv);
+                half3 baseColor = 0.3h * _BaseColor.rgb + 0.7h * color;
+                return half4(lerp(baseColor, edgeData.rgb, edgeData.a), 1);
+            #else
+                return half4(0.3h * _BaseColor.rgb + 0.7h * color, 1);
+            #endif
             }
 
             ENDHLSL

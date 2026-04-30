@@ -772,8 +772,10 @@ MonoBehaviour:
   addShader: {fileID: 7200000, guid: a662d89498424624194a47439cee33a5, type: 3}
   textureA: {fileID: 8400000, guid: b493c32330d8826459281f2fc06a7db9, type: 2}
   textureB: {fileID: 8400000, guid: 1bc7b33f2c2f2504b95230172f7fd42a, type: 2}
-  snowRate: 1
+  snowflakeHeight: 1
+  snowflakeChance: 0.1
   runEveryFrame: 1
+  accumulate: 1
 --- !u!4 &1368875732
 Transform:
   m_ObjectHideFlags: 0
@@ -1024,7 +1026,7 @@ Transform:
   m_GameObject: {fileID: 1811820096}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1.35, z: 7}
+  m_LocalPosition: {x: 0, y: 0.65, z: 7}
   m_LocalScale: {x: 2.7059, y: 2.7059, z: 2.7059}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1143,6 +1145,55 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1938460283
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1938460285}
+  - component: {fileID: 1938460284}
+  m_Layer: 0
+  m_Name: Global Volume
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1938460284
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1938460283}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 172515602e62fb746b5d573b38a5fe58, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.Volume
+  m_IsGlobal: 1
+  priority: 0
+  blendDistance: 0
+  weight: 1
+  sharedProfile: {fileID: 11400000, guid: 6d09fe0f3bcaca2438bd078e73ba8efd, type: 2}
+--- !u!4 &1938460285
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1938460283}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.15235779, y: 3.5410638, z: -6.6195536}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -1156,3 +1207,4 @@ SceneRoots:
   - {fileID: 1063003359}
   - {fileID: 1368875732}
   - {fileID: 680877639}
+  - {fileID: 1938460285}

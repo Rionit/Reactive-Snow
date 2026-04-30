@@ -47,7 +47,7 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _DepthMap:
-        m_Texture: {fileID: 2800000, guid: 1a8f74e969007e442881d3b3c5242b86, type: 3}
+        m_Texture: {fileID: 8400000, guid: 1bc7b33f2c2f2504b95230172f7fd42a, type: 2}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _DetailAlbedoMap:
@@ -119,14 +119,16 @@ Material:
     - _ClearCoatSmoothness: 0
     - _Cull: 2
     - _Cutoff: 0.5
-    - _DarkeningAmount: 0
+    - _DarkeningAmount: 1
     - _DarkeningFactor: 1
     - _DebugEdges: 0
+    - _DebugNormals: 0
     - _DetailAlbedoMapScale: 1
     - _DetailNormalMapScale: 1
     - _DisplacementAmount: 0.5
     - _DstBlend: 0
     - _DstBlendAlpha: 0
+    - _EdgeLift: 0.15
     - _EdgeStrength: 1
     - _EnvironmentReflections: 1
     - _GlossMapScale: 0
@@ -140,13 +142,16 @@ Material:
     - _QueueOffset: 0
     - _ReceiveShadows: 1
     - _SSSWrap: 1
-    - _Smoothness: 0.4
+    - _Smoothness: 0
     - _SmoothnessTextureChannel: 0
+    - _SparkleIntensity: 5
+    - _SparkleScale: 150
+    - _SparkleThreshold: 0.9562
     - _SpecularHighlights: 1
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
     - _Surface: 0
-    - _TesselationAmount: 4
+    - _TesselationAmount: 4.2
     - _TexelSize: 256
     - _WorkflowMode: 1
     - _XRMotionVectorsPass: 1

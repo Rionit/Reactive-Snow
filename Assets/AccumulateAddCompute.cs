@@ -6,7 +6,8 @@ public class AccumulateAddCompute : MonoBehaviour
     [SerializeField] private ComputeShader addShader;
     [SerializeField] private RenderTexture textureA;
     [SerializeField] private RenderTexture textureB; // persistent state buffer
-    [SerializeField] private float snowRate; 
+    [SerializeField] private float snowflakeHeight = 1.0f; 
+    [SerializeField] [Range(0.0f, 1.0f)] private float snowflakeChance = 0.1f; 
 
     [Header("Run")]
     [SerializeField] private bool runEveryFrame = true;
@@ -21,7 +22,8 @@ public class AccumulateAddCompute : MonoBehaviour
     private static readonly int WidthId = Shader.PropertyToID("_Width");
     private static readonly int HeightId = Shader.PropertyToID("_Height");
     private static readonly int DeltaTimeId = Shader.PropertyToID("_DeltaTime");
-    private static readonly int SnowRateId = Shader.PropertyToID("_SnowRate");
+    private static readonly int SnowflakeHeightId = Shader.PropertyToID("_SnowflakeHeight");
+    private static readonly int SnowflakeChanceId = Shader.PropertyToID("_SnowflakeChance");
     private static readonly int AccumulateId = Shader.PropertyToID("_Accumulate");
 
     private void Awake()
@@ -82,7 +84,8 @@ public class AccumulateAddCompute : MonoBehaviour
         addShader.SetInt(WidthId, textureA.width);
         addShader.SetInt(HeightId, textureA.height);
         addShader.SetFloat(DeltaTimeId, Time.deltaTime);
-        addShader.SetFloat(SnowRateId, snowRate);
+        addShader.SetFloat(SnowflakeHeightId, snowflakeHeight);
+        addShader.SetFloat(SnowflakeChanceId, snowflakeChance);
         addShader.SetBool(AccumulateId, accumulate);
 
         addShader.SetTexture(kernel, TexAId, textureA);
