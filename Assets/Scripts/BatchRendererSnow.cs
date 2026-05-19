@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
@@ -36,6 +37,14 @@ public class BRGSnow : MonoBehaviour
 
     public Vector2 SnowAreaSize = new Vector2(10f, 10f);
 
+    [Range(0f, 50f)]
+    [Tooltip("Snow instance scale offset (+-), in % of original scale")]
+    public float SnowScaleInstanceOffset = 10f;
+
+    [Range(0f, 180f)]
+    [Tooltip("Snow instance rotation offset (+-), in degrees")]
+    public float SnowRotationInstanceOffset = 45f;
+
     private BatchRendererGroup m_BRG;
 
     private GraphicsBuffer m_InstanceData;
@@ -53,9 +62,17 @@ public class BRGSnow : MonoBehaviour
 
     private const int kNumInstances = kNumRows * kNumRows;
 
-    private const int kNumRows = 50;
+    private const int kNumRows = 75;
 
-    private float[] m_TimeOffsets; // Per-instance time offset
+    private float[] m_instanceTimes;
+    private Vector2[] m_instanceLocationsXZ;
+    private Vector2[] m_instanceVelocitiesXZ;
+
+    public Vector2[] layerAccelerations = new Vector2[] { new Vector2(1, 0), new Vector2(-1, 0) };
+
+    private Vector3[] m_upVectors;
+    private Vector3[] m_scales;
+
     private uint byteAddressObjectToWorld;
     private uint byteAddressWorldToObject;
     private uint byteAddressColor;
@@ -71,6 +88,37 @@ public class BRGSnow : MonoBehaviour
     Vector2 step;
     Vector2 middle;
 
+    public IEnumerator RandomizeAccelerationsBig()
+    {
+        while (true)
+        {
+            for (int i = 0; i < layerAccelerations.Length; i++)
+            {
+                var randomAccelStrength = Random.Range(0f, 1f);
+                randomAccelStrength = randomAccelStrength * randomAccelStrength * 4f;
+
+                layerAccelerations[i] = (new Vector2(Random.Range(-1f, 1f), Random.Range(-1f, 1f)).normalized) * randomAccelStrength;
+            }
+
+            yield return new WaitForSeconds(10f);
+        }
+    }
+
+
+    public IEnumerator RandomizeAccelerationsSmall()
+    {
+        while (true)
+        {
+            var randomAccel = Random.Range(0, layerAccelerations.Length);
+
+            var randomAccelStrength = Random.Range(0f, 1f);
+            randomAccelStrength = randomAccelStrength * randomAccelStrength * 4f;
+
+            layerAccelerations[randomAccel] = (new Vector2(Random.Range(-1f, 1f), Random.Range(-1f, 1f)).normalized) * randomAccelStrength;
+
+            yield return new WaitForSeconds(3f);
+        }
+    }
 
     // Unity provided shaders such as Universal Render Pipeline/Lit expect
     // unity_ObjectToWorld and unity_WorldToObject in a special packed 48 byte
@@ -109,6 +157,18 @@ public class BRGSnow : MonoBehaviour
         }
     }
 
+    private void PrecomputeData()
+    {
+        m_upVectors = new Vector3[kNumInstances];
+        m_scales = new Vector3[kNumInstances];
+        for (int i = 0; i < kNumInstances; i++)
+        {
+            var rotationOffset = Quaternion.Euler(0f, 0f, Random.Range(-SnowRotationInstanceOffset, SnowRotationInstanceOffset));
+            m_upVectors[i] = rotationOffset * Vector3.up;
+            m_scales[i] = Vector3.one * Scale * (1f + Random.Range(-SnowScaleInstanceOffset, SnowScaleInstanceOffset) / 100f);
+        }
+    }
+
     // Raw buffers are allocated in ints, define an utility method to compute the required
     // amount of ints for our data.
     int BufferCountForInstances(int bytesPerInstance, int numInstances, int extraBytes = 0)
@@ -120,39 +180,53 @@ public class BRGSnow : MonoBehaviour
         return totalBytes / sizeof(int);
     }
 
-    // Helper method to generate instance matrices based on time
-    private Matrix4x4[] UpdateInstanceMatrices(float currentTime)
+    // Helper method to step physics analytically
+    private void StepParticle(ref Vector2 pos, ref Vector2 vel, float tA, float tB)
     {
-        var matrices = new Matrix4x4[kNumInstances];
-
-
-        for (int i = 0; i < kNumInstances; i++)
+        if (layerAccelerations == null || layerAccelerations.Length < 2)
         {
-            int row = i / kNumRows;
-            int col = i % kNumRows;
-
-            float t = (currentTime + m_TimeOffsets[i]) % animationDuration;
-            // Original position from cycle
-            Vector3 position = new Vector3(row * step.x - middle.x - 4 * windVector.x * t, fallHeight * (1 - t / animationDuration),  col * step.y - middle.y + windVector.y * t);
-
-
-            
-            // Apply time-based offset
-            /*position.x += Mathf.Sin(t) * 0.5f;
-            position.y += Mathf.Cos(t * 0.5f) * 0.5f;
-            position.z += Mathf.Sin(t * 0.7f) * 0.5f;*/
-            
-            Quaternion rot = Quaternion.LookRotation((position+transform.position - Camera.main.transform.position).normalized, Vector3.up);
-            matrices[i] = Matrix4x4.TRS(position + transform.position, rot, Vector3.one * Scale);
+            pos += vel * (tB - tA);
+            return;
         }
 
-        return matrices;
+        int N = layerAccelerations.Length;
+        float sA = tA * (N - 1) / animationDuration;
+        float sB = tB * (N - 1) / animationDuration;
+
+        while (sA < sB)
+        {
+            int j = Mathf.FloorToInt(sA);
+            if (j >= N - 1) j = N - 2;
+
+            float next_s = Mathf.Min(sB, j + 1f);
+            if (j == N - 2) next_s = sB;
+
+            float s_start = sA - j;
+            float s_end = next_s - j;
+
+            Vector2 a_j = layerAccelerations[j];
+            Vector2 a_j1 = layerAccelerations[j + 1];
+
+            Vector2 a_start = Vector2.Lerp(a_j, a_j1, s_start);
+            Vector2 a_end = Vector2.Lerp(a_j, a_j1, s_end);
+
+            float dt = (next_s - sA) * animationDuration / (N - 1);
+
+            pos += vel * dt + (2f * a_start + a_end) * (dt * dt / 6f);
+            vel += (a_start + a_end) * 0.5f * dt;
+
+            sA = next_s;
+        }
     }
 
     // During initialization, we will allocate all required objects, and set up our custom instance data.
     // Use OnEnable() instead of Start() so we also get a call when a domain reload happens.
     void OnEnable()
     {
+        PrecomputeData();
+
+        StartCoroutine(RandomizeAccelerationsBig());
+        StartCoroutine(RandomizeAccelerationsSmall());
         step = SnowAreaSize / kNumRows;
         middle = new Vector2(SnowAreaSize.x, SnowAreaSize.y) / 2f;
 
@@ -181,10 +255,21 @@ public class BRGSnow : MonoBehaviour
         var zero = new Matrix4x4[1] { Matrix4x4.zero };
 
         // Initialize time offsets for each instance
-        m_TimeOffsets = new float[kNumInstances];
+        m_instanceTimes = new float[kNumInstances];
+        m_instanceLocationsXZ = new Vector2[kNumInstances];
+        m_instanceVelocitiesXZ = new Vector2[kNumInstances];
+
         for (int i = 0; i < kNumInstances; i++)
         {
-            m_TimeOffsets[i] = Random.Range(0f,animationDuration); // Unique offset per instance
+            m_instanceTimes[i] = Random.Range(0f, animationDuration); // Unique offset per instance
+
+            int row = i / kNumRows;
+            int col = i % kNumRows;
+            m_instanceLocationsXZ[i] = new Vector2(row * step.x - middle.x, col * step.y - middle.y);
+            m_instanceVelocitiesXZ[i] = Vector2.zero;
+
+            // Fast-forward simulation to initial time so positions align
+            StepParticle(ref m_instanceLocationsXZ[i], ref m_instanceVelocitiesXZ[i], 0f, m_instanceTimes[i]);
         }
 
         // Create transform matrices for our instances
@@ -192,17 +277,12 @@ public class BRGSnow : MonoBehaviour
 
         for(int i = 0; i < kNumInstances; i++)
         {
-            int row = i / kNumRows;
-            int col = i % kNumRows;
+            float t = m_instanceTimes[i];
+            float currentY = fallHeight * (1 - t / animationDuration);
+            Vector3 position = new Vector3(m_instanceLocationsXZ[i].x, currentY, m_instanceLocationsXZ[i].y);
 
-            //Vector3 position = transform.TransformPoint(new Vector3(row * 2- 10, col * 2 - 10, 0));
-            Vector3 position = new Vector3(row * step.x - middle.x, 0, col * step.y - middle.y);
-            matrices[i] = Matrix4x4.Translate(position + transform.position);
-
-
-            matrices[i] = Matrix4x4.LookAt(position + transform.position, Camera.main.transform.position, Vector3.up);
-            Quaternion rot = Quaternion.LookRotation((position - Camera.main.transform.position).normalized, Vector3.up);
-            matrices[i] = Matrix4x4.TRS(position + transform.position, rot, Vector3.one * Scale);
+            Quaternion rot = Quaternion.LookRotation((position + transform.position - Camera.main.transform.position).normalized, m_upVectors[i]);
+            matrices[i] = Matrix4x4.TRS(position + transform.position, rot, m_scales[i]);
         }
 
 
@@ -314,8 +394,36 @@ public class BRGSnow : MonoBehaviour
         if (m_BRG == null || m_CopySrc == null || m_InstanceData == null)
             return;
 
-        // Generate updated matrices based on current time
-        var matrices = UpdateInstanceMatrices(Time.time);
+        float dt = Time.deltaTime;
+        var matrices = new Matrix4x4[kNumInstances];
+
+        for (int i = 0; i < kNumInstances; i++)
+        {
+            float t_old = m_instanceTimes[i];
+            float t_new = t_old + dt;
+
+            if (t_new >= animationDuration)
+            {
+                StepParticle(ref m_instanceLocationsXZ[i], ref m_instanceVelocitiesXZ[i], t_old, animationDuration);
+
+                int row = i / kNumRows;
+                int col = i % kNumRows;
+                m_instanceLocationsXZ[i] = new Vector2(row * step.x - middle.x, col * step.y - middle.y);
+                m_instanceVelocitiesXZ[i] = Vector2.zero;
+
+                t_new %= animationDuration;
+                t_old = 0f;
+            }
+
+            StepParticle(ref m_instanceLocationsXZ[i], ref m_instanceVelocitiesXZ[i], t_old, t_new);
+            m_instanceTimes[i] = t_new;
+
+            float currentY = fallHeight * (1 - t_new / animationDuration);
+            Vector3 position = new Vector3(m_instanceLocationsXZ[i].x, currentY, m_instanceLocationsXZ[i].y);
+
+            Quaternion rot = Quaternion.LookRotation((position + transform.position - Camera.main.transform.position).normalized, m_upVectors[i]);
+            matrices[i] = Matrix4x4.TRS(position + transform.position, rot, m_scales[i]);
+        }
 
         // Convert to packed format
         var objectToWorld = new PackedMatrix[kNumInstances];
@@ -329,13 +437,13 @@ public class BRGSnow : MonoBehaviour
 
         // Update colors (can also be time-based if desired)
         var colors = new Vector4[kNumInstances];
-        
+
 
         Vector4 originalColorVec = new Vector4(OriginalColor.r, OriginalColor.g, OriginalColor.b, OriginalColor.a);
         Vector4 finalColorVec = new Vector4(FinalColor.r, FinalColor.g, FinalColor.b, FinalColor.a);
         for (int i = 0; i < kNumInstances; i++)
         {
-            float t = (Time.time + m_TimeOffsets[i]) % animationDuration;
+            float t = m_instanceTimes[i];
             float animT = Mathf.Clamp(t / colorAnimTime, 0f, 1f);
             colors[i] = Vector4.Lerp(originalColorVec, finalColorVec, animT);
         }
