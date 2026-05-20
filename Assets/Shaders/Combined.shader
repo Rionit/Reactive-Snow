@@ -15,6 +15,7 @@ Shader "Custom/Combined"
         [Header(Snow Material Settings)]
         [Space]
         [Normal] _BumpMap("Normal Map", 2D) = "bump" {}
+        [Normal] _SnowSparkleNormalMap("Snow Sparkle Normal Map", 2D) = "bump" {}
         _Smoothness("Smoothness", Range(0, 1)) = 0.5
         _SpecularColor("Specular Color", Color) = (1, 1, 1, 1)
         _SSSColor("Subsurface Scattering Color", Color) = (0.8, 0.8, 1, 1)
@@ -29,9 +30,11 @@ Shader "Custom/Combined"
         
         [Header(Displacement Settings)]
         [Space]
+        [NoScaleOffset] _GroundDepthTexture("Ground Depth Texture", 2D) = "black" {}
         _DisplacementAmount("Displacement Amount", Range(0.0, 2.5)) = 0.25
         _NormalCorrectionOffset("Normal Correction Offset", Range(0.0, 0.02)) = 0.01
         _DarkeningAmount("Darkening Amount", Range(0.0, 1.0)) = 0.75
+        _SnowEdgeUpliftFactor("Snow Edge Uplift Factor", Range(0.0, 0.5)) = 0.15
         
         [Header(Filter Settings)]
         [Space]
@@ -51,6 +54,8 @@ Shader "Custom/Combined"
         Pass
         {
             Name "SnowTessellationDisplacementPass"
+            
+            Cull Off
 
             HLSLPROGRAM
 
@@ -103,10 +108,15 @@ Shader "Custom/Combined"
 
                 // World position for View dir
                 float3 worldPos : TEXCOORD4;
+
+                float height : FLOAT;
             };
 
             float4x4 _WorldToLight;
             float4x4 _LightProjection;
+
+            float3 _SnowCamPos;
+            float _SnowCamSize; // 5
 
             // Tessellation factors (how much to subdivide)
             struct TesselationFactors
@@ -118,11 +128,17 @@ Shader "Custom/Combined"
             TEXTURE2D(_BumpMap);
             SAMPLER(sampler_BumpMap);
 
+            TEXTURE2D(_SnowSparkleNormalMap);
+            SAMPLER(sampler_SnowSparkleNormalMap);
+
             TEXTURE2D(_DepthMap);
             SAMPLER(sampler_DepthMap);
 
             TEXTURE2D(_LightDepthMap);
             SAMPLER(sampler_LightDepthMap);
+
+            TEXTURE2D(_GroundDepthTexture);
+            SAMPLER(sampler_GroundDepthTexture);
 
             CBUFFER_START(UnityPerMaterial)
                 float _SparkleIntensity;
@@ -143,6 +159,7 @@ Shader "Custom/Combined"
                 float _DisplacementAmount;
                 float _NormalCorrectionOffset;
                 float _DarkeningAmount;
+                float _SnowEdgeUpliftFactor;
 
                 float _TexelSize;
                 float _BlurAmount;
@@ -156,6 +173,21 @@ Shader "Custom/Combined"
                 OUT.tangentWS = float4(TransformObjectToWorldDir(IN.tangent.xyz), IN.tangent.w);
                 OUT.uv = TRANSFORM_TEX(IN.uv, _BumpMap);
                 return OUT;
+            }
+
+            float2 GetCamOffsetUV(float3 worldPos)
+            {
+                float2 uv = (worldPos.xz - _SnowCamPos.xz) / (_SnowCamSize * 2.0);
+                // center around 0.5
+                uv += 0.5;
+                // cam is looking up
+                uv.y = 1.0 - uv.y;
+                return uv;
+            }
+
+            float SampleGround(float2 uv)
+            {
+                return SAMPLE_TEXTURE2D_LOD(_GroundDepthTexture, sampler_GroundDepthTexture, float4(uv,0,0), 0).r;
             }
 
             float SampleDepth(float2 uv)
@@ -263,10 +295,25 @@ Shader "Custom/Combined"
 
                 float2 texelSize = float2(1.0/_TexelSize, 1.0/_TexelSize);
 
-                // 1.0 - uv.x because ortho camera looking up from bottom
-                float2 uv0 = float2(1.0 - patch[0].uv.x, patch[0].uv.y);
-                float2 uv1 = float2(1.0 - patch[1].uv.x, patch[1].uv.y);
-                float2 uv2 = float2(1.0 - patch[2].uv.x, patch[2].uv.y);
+                float2 uv0 = GetCamOffsetUV(patch[0].positionWS);
+                float2 uv1 = GetCamOffsetUV(patch[1].positionWS);
+                float2 uv2 = GetCamOffsetUV(patch[2].positionWS);
+
+                // check if triangle is completely outside snow area
+                bool outside =
+                    (uv0.x < 0 && uv1.x < 0 && uv2.x < 0) ||
+                    (uv0.x > 1 && uv1.x > 1 && uv2.x > 1) ||
+                    (uv0.y < 0 && uv1.y < 0 && uv2.y < 0) ||
+                    (uv0.y > 1 && uv1.y > 1 && uv2.y > 1);
+
+                if (outside)
+                {
+                    factors.edge[0] = 1.0;
+                    factors.edge[1] = 1.0;
+                    factors.edge[2] = 1.0;
+                    factors.inside  = 1.0;
+                    return factors;
+                }
 
                 float2 mid01 = (uv0 + uv1) * 0.5;
                 float2 mid12 = (uv1 + uv2) * 0.5;
@@ -313,7 +360,11 @@ Shader "Custom/Combined"
                 // These UV coords are used for displacement
                 // map, because the ortho camera is looking
                 // from the bottom
-                float2 duv = float2(1.0 - uv.x, uv.y);
+                float2 duv = GetCamOffsetUV(positionWS);
+                
+                bool inside =
+                duv.x >= 0.0 && duv.x <= 1.0 &&
+                duv.y >= 0.0 && duv.y <= 1.0;
 
                 float3 normalWS =
                 patch[0].normalWS * barycentricCoords.x +
@@ -328,48 +379,33 @@ Shader "Custom/Combined"
 
                 // Shift vertices down where tesselated/texture is white
                 float2 texelSize = float2(1.0/_TexelSize, 1.0/_TexelSize);
-                float factor = BlurDepth(duv, texelSize);
-                positionWS.y -= factor * _DisplacementAmount;
-                    
+
+                float height = inside ? BlurDepth(duv, texelSize) : 0.0;
+                float edgeMask = EdgeStrength(duv, texelSize);
+                float lift = edgeMask * (1.0 - height); // rim
+                float factor = 0.0;
+                factor = height;
+                // base displacement down
+                positionWS.y -= height * _DisplacementAmount;
+                // edge uplift (snow pile effect)
+                positionWS.y += lift * _DisplacementAmount * _SnowEdgeUpliftFactor;
                 // ^^^^^
                 // Because we displacing the vertices, we need to recalculate
                 // the normals.
 
                 // Direction from current vertex uv to
                 // control point uv's of the patch
-                float2 v0 = patch[0].uv - uv;
-                float2 v1 = patch[1].uv - uv;
-                float2 v2 = patch[2].uv - uv;
+                float2 texel = 1.0 / _TexelSize;
 
-                // Avoids division by zero and precision issues when the vector is very small
-                float l0 = max(length(v0), 1e-6);
-                float l1 = max(length(v1), 1e-6);
-                float l2 = max(length(v2), 1e-6);
+                float hL = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, duv - float2(texel.x, 0), 0).r;
+                float hR = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, duv + float2(texel.x, 0), 0).r;
+                float hD = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, duv - float2(0, texel.y), 0).r;
+                float hU = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, duv + float2(0, texel.y), 0).r;
 
-                // We have to divide by l, because normalize(e)
-                // makes visual errors at poles
-                float2 o0 = v0 * (_NormalCorrectionOffset / l0); 
-                float2 o1 = v1 * (_NormalCorrectionOffset / l1);
-                float2 o2 = v2 * (_NormalCorrectionOffset / l2);
+                float3 dx = float3(1, (hR - hL) * _DisplacementAmount, 0);
+                float3 dz = float3(0, (hU - hD) * _DisplacementAmount, 1);
 
-                // Avoid overshooting outside of the current patch
-                o0 = (l0 <= _NormalCorrectionOffset) ? v0 : o0;
-                o1 = (l1 <= _NormalCorrectionOffset) ? v1 : o1;
-                o2 = (l2 <= _NormalCorrectionOffset) ? v2 : o2;
-
-                // Sample displacement values in a triangle around tessellated vertex
-                float s0 = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(duv + o0, 0, 0), 0).r;
-                float s1 = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(duv + o1, 0, 0), 0).r;
-                float s2 = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, float4(duv + o2, 0, 0), 0).r;
-
-                // Take tangent and bi-tangent
-                float3 t1 = (patch[1].positionWS - float3(0, s1 * _DisplacementAmount, 0))
-                          - (patch[0].positionWS - float3(0, s0 * _DisplacementAmount, 0));
-                float3 t2 = (patch[2].positionWS - float3(0, s2 * _DisplacementAmount, 0))
-                          - (patch[0].positionWS - float3(0, s0 * _DisplacementAmount, 0));
-
-                // Calculate new normal after displacement
-                normalWS = normalize(cross(t1, t2));
+                normalWS = normalize(cross(dz, dx));
 
                 // Creates the TBN matrix
                 VertexNormalInputs tbn = GetVertexNormalInputs(TransformWorldToObjectNormal(normalWS), tangentWS);
@@ -397,10 +433,10 @@ Shader "Custom/Combined"
                 return max(0,(NDotL + wrap) / (wrap + 1));
             }
 
-            half4 GetEdgeDebug(float2 uv)
+            half4 GetEdgeDebug(float2 uv, float3 worldPos)
             {
                 float2 texelSize = float2(1.0/_TexelSize, 1.0/_TexelSize);
-                float2 duv = float2(1.0 - uv.x, uv.y);
+                float2 duv = GetCamOffsetUV(worldPos);
 
                 float edge = saturate(EdgeStrength(duv, texelSize) * 5.0);
 
@@ -416,10 +452,15 @@ Shader "Custom/Combined"
 
             half4 frag(Varyings IN) : SV_Target
             {
+                
+                half3 sparkleNormalTS = UnpackNormal(
+                    SAMPLE_TEXTURE2D(_SnowSparkleNormalMap, sampler_SnowSparkleNormalMap, IN.uv * _SparkleScale)
+                );
                 // Normal mapping
                 half3 normalTS = UnpackNormal(SAMPLE_TEXTURE2D(_BumpMap, sampler_BumpMap, IN.uv));
                 half3x3 tangentToWorld = half3x3(IN.tangent0, IN.tangent1, IN.tangent2);
-                half3 worldNormal = normalize(TransformTangentToWorld(normalTS, tangentToWorld));
+                half3 sparkleTS = normalTS + sparkleNormalTS * _SparkleIntensity;
+                half3 worldNormal = normalize(TransformTangentToWorld(sparkleTS, tangentToWorld));
 
                 // Lighting setup
                 Light mainLight = GetMainLight();
@@ -441,39 +482,31 @@ Shader "Custom/Combined"
 
                 half3 color = directColor + SSScolor;
 
-                // SNOW SPARKLE
+                // ===========================================
+                // SPARKLES
+                // ===========================================
                 float3 halfVec = normalize(lightDir + viewDir);
                 float sparkleDot = saturate(dot(worldNormal, halfVec));
-
-                // Layer 1 (main sparkles)
-                float2 uv1 = IN.worldPos.xz * _SparkleScale;
-                float noise1 = Hash21(floor(uv1));
-
-                float sparkle1 = pow(sparkleDot, 200.0);
-                sparkle1 *= step(_SparkleThreshold, noise1);
-
-                // Layer 2 (smaller, sharper sparkles)
-                float2 uv2 = IN.worldPos.xz * (_SparkleScale * 2.5);
-                float noise2 = Hash21(floor(uv2));
-
-                float sparkle2 = pow(sparkleDot, 400.0);
-                sparkle2 *= step(_SparkleThreshold + 0.02, noise2);
-
-                // Combine layers
-                float sparkle = (sparkle1 + sparkle2 * 0.5);
-
+                
+                float sparkle = pow(sparkleDot, 500.0);
                 sparkle *= _SparkleIntensity;
+                sparkle *= step(_SparkleThreshold, sparkle);
 
                 // Slight color variation
                 float3 sparkleColor = float3(1.0, 0.97, 0.92);
                 color += sparkle * sparkleColor * lightColor;
+                // ===========================================
 
+                
+                //return float4(sparkleDot.rrr, 1.0);
+                //return float4(IN.height.rrr, 0.0);
+                
             #ifdef _DEBUG_NORMALS
                 return float4(worldNormal, 1.0);
             #endif
 
             #ifdef _DEBUG_EDGES
-                half4 edgeData = GetEdgeDebug(IN.uv);
+                half4 edgeData = GetEdgeDebug(IN.uv, IN.worldPos);
                 half3 baseColor = 0.3h * _BaseColor.rgb + 0.7h * color;
                 return half4(lerp(baseColor, edgeData.rgb, edgeData.a), 1);
             #else

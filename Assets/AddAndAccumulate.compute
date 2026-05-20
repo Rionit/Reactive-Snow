@@ -1,19 +1,25 @@
 #pragma kernel CSMain
 #pragma target 4.5
 
-Texture2D<float4> _TexA;     // input A
-Texture2D<float4> _TexB;     // persistent input B
-RWTexture2D<float4> _Result; // temporary output
+Texture2D<float4> _ObjectTex;            // object depth map input
+Texture2D<float4> _GroundTex;           // object depth map input
+Texture2D<float4> _AccumulatedTex;      // persistent texture
+RWTexture2D<float4> _Result;            // temporary output
+
+SamplerState samplerLinearClamp;
 
 int _Width;
 int _Height;
+
 float _DeltaTime;
 float _SnowflakeHeight;
 float _SnowflakeChance;
+
 bool _Accumulate;
 
+float2 _CameraGlobalOffset;
+float _CameraSize;
 
-// https://discussions.unity.com/t/generate-random-float-between-0-and-1-in-shader/728060
 float rand(float2 co)
 {
     return frac(sin(dot(co, float2(12.9898, 78.233))) * 43758.5453);
@@ -25,18 +31,32 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     if (id.x >= _Width || id.y >= _Height)
         return;
 
-    int2 uv = int2(id.xy);
-    float4 a = _TexA[uv];
-    float4 b = _TexB[uv];
+    float2 uv = (id.xy + 0.5) / float2(_Width, _Height);
 
-    _Result[uv] = saturate(a + b);
+    float2 uvOffset = _CameraGlobalOffset / _CameraSize;
 
-    float r = rand(id.xy * _DeltaTime);
-    
-    // combine with new depth map and add falling snow
-    if (_Accumulate && r < _SnowflakeChance)
-        _Result[uv] -= _SnowflakeHeight * _DeltaTime;
-        // _Result[uv] = saturate(a + b - _SnowRate * _DeltaTime);
-    else
-        _Result[uv] = saturate(a + b);
+    float2 prevUV = uv - float2(-uvOffset.x, uvOffset.y);
+
+    float4 base = _ObjectTex[id.xy];
+    float4 ground = _GroundTex[id.xy];
+
+    float2 inBounds = step(0.0, prevUV) * step(prevUV, 1.0);
+    float edgeMask = inBounds.x * inBounds.y;
+
+    float4 prev = _AccumulatedTex.SampleLevel(samplerLinearClamp, prevUV, 0) * edgeMask;
+    float4 result = prev;
+
+    // combine new depth with accumulated texture
+    if (base.r > 0.0f && base.r > ground.r)
+        result = saturate(base + prev);
+
+    float r = rand(id.xy + _DeltaTime * 20.0);
+
+    // add falling snow
+    if (_Accumulate && r < _SnowflakeChance && prev.r > 0.0f)
+    {
+        result.r -= _SnowflakeHeight * _DeltaTime;
+    }
+
+    _Result[id.xy] = saturate(result);
 }
