@@ -1,0 +1,68 @@
+#pragma kernel CSMain
+#pragma target 4.5
+
+Texture2D<float4> _ObjectTex;           // object depth map input
+Texture2D<float4> _GroundTex;           // ground depth map input
+Texture2D<float4> _AccumulatedTex;      // persistent texture of accumulated snow
+RWTexture2D<float4> _Result;            // temporary output
+
+SamplerState samplerLinearClamp;
+
+int _Width; // texture width
+int _Height;// texture height
+
+float _DeltaTime;
+float _SnowflakeHeight; // how much will the pixel value change if snowflake falls on it
+float _SnowflakeChance; // chance if snowflake falls on this pixel
+
+bool _Accumulate;       // whether it is snowing and snowflakes can fall and rise the snow height
+
+float2 _CameraGlobalOffset; // camera world position on ground plane
+float _CameraSize;          // camera sensor size
+
+// rng in float range [0.0, 1.0]
+float rand(float2 co)
+{
+    return frac(sin(dot(co, float2(12.9898, 78.233))) * 43758.5453);
+}
+
+[numthreads(8, 8, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    // for paralelization
+    if (id.x >= _Width || id.y >= _Height)
+        return;
+
+    // offsetting uv by the camera world position
+    float2 uv = (id.xy + 0.5) / float2(_Width, _Height);
+    float2 uvOffset = _CameraGlobalOffset / _CameraSize;
+    float2 prevUV = uv - float2(-uvOffset.x, uvOffset.y);
+
+    float4 objects = _ObjectTex[id.xy]; // depth map of interactable objects
+    float4 ground = _GroundTex[id.xy];  // depth map of the snow layer
+
+    // this helps with edges to prevent lines going to the edge of the mesh
+    float2 inBounds = step(0.0, prevUV) * step(prevUV, 1.0);
+    float edgeMask = inBounds.x * inBounds.y;
+
+    // sample the accumulated texture
+    // sadly this is causing blur of accumulated texture when player moves
+    // but idk how to fix it
+    float4 prev = _AccumulatedTex.SampleLevel(samplerLinearClamp, prevUV, 0) * edgeMask;
+    float4 result = prev;
+
+    // combine new depth with accumulated texture
+    if (objects.r > 0.0f && objects.r > ground.r)
+        result = saturate(objects + prev);
+
+    // whether a snowflake falls on this pixel
+    float r = rand(id.xy + _DeltaTime * 20.0);
+
+    // add falling snow
+    if (_Accumulate && r < _SnowflakeChance && prev.r > 0.0f)
+    {
+        result.r -= _SnowflakeHeight * _DeltaTime;
+    }
+
+    _Result[id.xy] = saturate(result);
+}

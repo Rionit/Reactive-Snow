@@ -15,6 +15,8 @@ public class SnowController : MonoBehaviour
     [SerializeField] [Range(0.0f, 1.0f)] private float snowflakeChance = 0.1f;
     [SerializeField] private GameObject cylinderPrefab;
     [SerializeField] private Camera spawnCamera;
+    [SerializeField] private BRGSnow brgsnow;
+    [SerializeField] private GameObject textureVisualisations;
     
     [Header("Run")]
     [SerializeField] private bool runEveryFrame = true;
@@ -90,6 +92,8 @@ public class SnowController : MonoBehaviour
     {
         if (runEveryFrame)
             DispatchOnce();
+
+        brgsnow.enabled = accumulate;
         
         if (Keyboard.current.eKey.wasPressedThisFrame)
         {
@@ -106,6 +110,16 @@ public class SnowController : MonoBehaviour
 
                 Instantiate(cylinderPrefab, spawnPos, rotation);
             }
+        }
+
+        if (Keyboard.current.qKey.wasPressedThisFrame)
+        {
+            textureVisualisations.SetActive(!textureVisualisations.activeSelf);
+        }
+
+        if (Keyboard.current.fKey.wasPressedThisFrame)
+        {
+            accumulate = !accumulate;
         }
     }
 

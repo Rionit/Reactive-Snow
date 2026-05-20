@@ -502,10 +502,10 @@ Camera:
     width: 1
     height: 1
   near clip plane: 1
-  far clip plane: 5
+  far clip plane: 20
   field of view: 60
   orthographic: 1
-  orthographic size: 10
+  orthographic size: 20
   m_Depth: 0
   m_CullingMask:
     serializedVersion: 2
@@ -630,6 +630,10 @@ MonoBehaviour:
   snowCam: {fileID: 681484245}
   snowflakeHeight: 1
   snowflakeChance: 0.1
+  cylinderPrefab: {fileID: 621368311015188781, guid: 79bd01bb50e38fb418f39a17fb6c3a1c, type: 3}
+  spawnCamera: {fileID: 1417502061}
+  brgsnow: {fileID: 2031242617}
+  textureVisualisations: {fileID: 1949854776}
   runEveryFrame: 1
   accumulate: 0
 --- !u!4 &825930132
@@ -652,6 +656,11 @@ GameObject:
   m_CorrespondingSourceObject: {fileID: 4416926081852918481, guid: 64dce48905ffd9b4293e595fa6941544, type: 3}
   m_PrefabInstance: {fileID: 1341398362}
   m_PrefabAsset: {fileID: 0}
+--- !u!4 &916523732 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 3893294197879345259, guid: 64dce48905ffd9b4293e595fa6941544, type: 3}
+  m_PrefabInstance: {fileID: 1341398362}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &920411072
 GameObject:
   m_ObjectHideFlags: 0
@@ -665,7 +674,7 @@ GameObject:
   - component: {fileID: 920411075}
   - component: {fileID: 920411074}
   m_Layer: 0
-  m_Name: Quad
+  m_Name: Accumulated
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -684,7 +693,7 @@ Transform:
   m_LocalScale: {x: 0.21596916, y: 0.21596916, z: 0.21596916}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 1417502058}
+  m_Father: {fileID: 1949854777}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!64 &920411074
 MeshCollider:
@@ -778,7 +787,7 @@ GameObject:
   - component: {fileID: 1011710953}
   - component: {fileID: 1011710952}
   m_Layer: 0
-  m_Name: Cube (1)
+  m_Name: Walls
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -890,7 +899,7 @@ GameObject:
   - component: {fileID: 1312365375}
   - component: {fileID: 1312365374}
   m_Layer: 0
-  m_Name: Quad (2)
+  m_Name: Objects
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -909,7 +918,7 @@ Transform:
   m_LocalScale: {x: 0.21596916, y: 0.21596916, z: 0.21596916}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 1417502058}
+  m_Father: {fileID: 1949854777}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!64 &1312365374
 MeshCollider:
@@ -1068,7 +1077,10 @@ PrefabInstance:
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
-    m_AddedGameObjects: []
+    m_AddedGameObjects:
+    - targetCorrespondingSourceObject: {fileID: 3893294197879345259, guid: 64dce48905ffd9b4293e595fa6941544, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2031242618}
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 64dce48905ffd9b4293e595fa6941544, type: 3}
 --- !u!4 &1341398363 stripped
@@ -1145,13 +1157,7 @@ PrefabInstance:
     m_AddedGameObjects:
     - targetCorrespondingSourceObject: {fileID: 8944336655422409503, guid: f6d148d888ffbf54b9afe9936dfaec1f, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 920411073}
-    - targetCorrespondingSourceObject: {fileID: 8944336655422409503, guid: f6d148d888ffbf54b9afe9936dfaec1f, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 1802055951}
-    - targetCorrespondingSourceObject: {fileID: 8944336655422409503, guid: f6d148d888ffbf54b9afe9936dfaec1f, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 1312365373}
+      addedObject: {fileID: 1949854777}
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 8944336655422409498, guid: f6d148d888ffbf54b9afe9936dfaec1f, type: 3}
       insertIndex: -1
@@ -1185,7 +1191,7 @@ MonoBehaviour:
     m_Bits: 1
   m_VolumeTrigger: {fileID: 0}
   m_VolumeFrameworkUpdateModeOption: 2
-  m_RenderPostProcessing: 0
+  m_RenderPostProcessing: 1
   m_Antialiasing: 0
   m_AntialiasingQuality: 2
   m_StopNaN: 0
@@ -1209,6 +1215,11 @@ MonoBehaviour:
 --- !u!4 &1417502058 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 8944336655422409503, guid: f6d148d888ffbf54b9afe9936dfaec1f, type: 3}
+  m_PrefabInstance: {fileID: 1417502052}
+  m_PrefabAsset: {fileID: 0}
+--- !u!20 &1417502061 stripped
+Camera:
+  m_CorrespondingSourceObject: {fileID: 8944336655422409496, guid: f6d148d888ffbf54b9afe9936dfaec1f, type: 3}
   m_PrefabInstance: {fileID: 1417502052}
   m_PrefabAsset: {fileID: 0}
 --- !u!1001 &1465277095
@@ -1477,7 +1488,7 @@ GameObject:
   - component: {fileID: 1661436016}
   - component: {fileID: 1661436015}
   m_Layer: 0
-  m_Name: Cube
+  m_Name: Walls
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1686,10 +1697,10 @@ Camera:
     width: 1
     height: 1
   near clip plane: 1
-  far clip plane: 5
+  far clip plane: 20
   field of view: 60
   orthographic: 1
-  orthographic size: 10
+  orthographic size: 20
   m_Depth: 0
   m_CullingMask:
     serializedVersion: 2
@@ -1732,7 +1743,7 @@ GameObject:
   - component: {fileID: 1802055953}
   - component: {fileID: 1802055952}
   m_Layer: 0
-  m_Name: Quad (1)
+  m_Name: Ground
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1747,11 +1758,11 @@ Transform:
   m_GameObject: {fileID: 1802055950}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0.061, y: 0.24000001, z: 1.0700002}
+  m_LocalPosition: {x: 0.06099999, y: 0.24000001, z: 1.0700002}
   m_LocalScale: {x: 0.21596916, y: 0.21596916, z: 0.21596916}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 1417502058}
+  m_Father: {fileID: 1949854777}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!64 &1802055952
 MeshCollider:
@@ -1832,6 +1843,103 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1802055950}
   m_Mesh: {fileID: 10210, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &1949854776
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1949854777}
+  m_Layer: 0
+  m_Name: Textures
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1949854777
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1949854776}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 920411073}
+  - {fileID: 1802055951}
+  - {fileID: 1312365373}
+  m_Father: {fileID: 1417502058}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2031242616
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2031242618}
+  - component: {fileID: 2031242617}
+  m_Layer: 0
+  m_Name: Batch
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2031242617
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2031242616}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ab8c37b994348c2a5b46724037552546, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BatchRendererSnow
+  mesh: {fileID: -2687483342731999757, guid: 7c0e02b895b548942b732f42559a4629, type: 3}
+  material: {fileID: 2100000, guid: 71fe70a358d3db54496d10dc9c0b45d6, type: 2}
+  memcpy: {fileID: 7200000, guid: 07cd7233d9018dfb1b4da5e258c109b4, type: 3}
+  fallHeight: 5
+  animationDuration: 3
+  OriginalColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+  FinalColor: {r: 1, g: 1, b: 1, a: 1}
+  colorAnimTime: 1
+  windVector: {x: 0.2, y: 0}
+  Scale: 0.05
+  SnowAreaSize: {x: 20, y: 20}
+  SnowScaleInstanceOffset: 40.3
+  SnowRotationInstanceOffset: 45
+  layerAccelerations:
+  - {x: 1, y: 0.5}
+  - {x: 2, y: -1.5}
+  - {x: -2, y: 0}
+  - {x: -2, y: 0}
+  - {x: 1, y: 0}
+--- !u!4 &2031242618
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2031242616}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: -0.22, z: -0.09}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 916523732}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2054595344
 GameObject:
   m_ObjectHideFlags: 0

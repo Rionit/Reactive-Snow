@@ -25,7 +25,7 @@ Material:
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
-  - _PARTITIONING_FRACTIONALEVEN
+  - _PARTITIONING_INTEGER
   m_InvalidKeywords: []
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
@@ -146,14 +146,14 @@ Material:
     - _NormalCorrectionOffset: 0.015
     - _OcclusionStrength: 1
     - _Parallax: 0.005
-    - _Partitioning: 2
+    - _Partitioning: 0
     - _QueueOffset: 0
     - _ReceiveShadows: 1
     - _SSSWrap: 1
-    - _Smoothness: 0
+    - _Smoothness: 0.4
     - _SmoothnessTextureChannel: 0
     - _SnowEdgeUpliftFactor: 0.15
-    - _SparkleIntensity: 1
+    - _SparkleIntensity: 2
     - _SparkleScale: 15
     - _SparkleThreshold: 0.8
     - _SpecularHighlights: 1

@@ -8,6 +8,7 @@ Shader "Custom/Combined"
         [NoScaleOffset] _LightDepthMap ("Light Depth Map", 2D) = "black" {} // for self shadowing
         
         [Header(Sparkle Settings)]
+        [Normal] _SnowSparkleNormalMap("Snow Sparkle Normal Map", 2D) = "bump" {}
         _SparkleIntensity("Sparkle Intensity", Range(0, 5)) = 1.5
         _SparkleScale("Sparkle Scale", Range(10, 500)) = 150
         _SparkleThreshold("Sparkle Threshold", Range(0.8, 0.999)) = 0.95
@@ -15,7 +16,6 @@ Shader "Custom/Combined"
         [Header(Snow Material Settings)]
         [Space]
         [Normal] _BumpMap("Normal Map", 2D) = "bump" {}
-        [Normal] _SnowSparkleNormalMap("Snow Sparkle Normal Map", 2D) = "bump" {}
         _Smoothness("Smoothness", Range(0, 1)) = 0.5
         _SpecularColor("Specular Color", Color) = (1, 1, 1, 1)
         _SSSColor("Subsurface Scattering Color", Color) = (0.8, 0.8, 1, 1)
@@ -299,7 +299,7 @@ Shader "Custom/Combined"
                 float2 uv1 = GetCamOffsetUV(patch[1].positionWS);
                 float2 uv2 = GetCamOffsetUV(patch[2].positionWS);
 
-                // check if triangle is completely outside snow area
+                // check if triangle is completely outside accumulated snow texture area
                 bool outside =
                     (uv0.x < 0 && uv1.x < 0 && uv2.x < 0) ||
                     (uv0.x > 1 && uv1.x > 1 && uv2.x > 1) ||
@@ -321,10 +321,10 @@ Shader "Custom/Combined"
 
                 float2 center = (uv0 + uv1 + uv2) / 3.0;
 
+                // get the factors for "how much of an edge this point is"
                 float e0 = EdgeStrength(mid12, texelSize);
                 float e1 = EdgeStrength(mid20, texelSize);
                 float e2 = EdgeStrength(mid01, texelSize);
-
                 float c = EdgeStrength(center, texelSize);
 
                 // Edge tess factors = sampled at edge midpoints
@@ -357,25 +357,13 @@ Shader "Custom/Combined"
                 patch[1].uv * barycentricCoords.y +
                 patch[2].uv * barycentricCoords.z;
 
-                // These UV coords are used for displacement
-                // map, because the ortho camera is looking
-                // from the bottom
+                // get camera world space offsetted uvs 
                 float2 duv = GetCamOffsetUV(positionWS);
-                
+
+                // whether this point is inside the uvs
                 bool inside =
                 duv.x >= 0.0 && duv.x <= 1.0 &&
                 duv.y >= 0.0 && duv.y <= 1.0;
-
-                float3 normalWS =
-                patch[0].normalWS * barycentricCoords.x +
-                patch[1].normalWS * barycentricCoords.y +
-                patch[2].normalWS * barycentricCoords.z;
-
-                float4 tangentWS =
-                patch[0].tangentWS * barycentricCoords.x +
-                patch[1].tangentWS * barycentricCoords.y +
-                patch[2].tangentWS * barycentricCoords.z;
-                tangentWS.xyz = normalize(tangentWS.xyz);
 
                 // Shift vertices down where tesselated/texture is white
                 float2 texelSize = float2(1.0/_TexelSize, 1.0/_TexelSize);
@@ -383,37 +371,42 @@ Shader "Custom/Combined"
                 float height = inside ? BlurDepth(duv, texelSize) : 0.0;
                 float edgeMask = EdgeStrength(duv, texelSize);
                 float lift = edgeMask * (1.0 - height); // rim
-                float factor = 0.0;
-                factor = height;
                 // base displacement down
                 positionWS.y -= height * _DisplacementAmount;
-                // edge uplift (snow pile effect)
+                // edge uplift (snow pile effect on edges)
                 positionWS.y += lift * _DisplacementAmount * _SnowEdgeUpliftFactor;
                 // ^^^^^
-                // Because we displacing the vertices, we need to recalculate
+                // Because we are displacing the vertices, we need to recalculate
                 // the normals.
 
-                // Direction from current vertex uv to
-                // control point uv's of the patch
                 float2 texel = 1.0 / _TexelSize;
-
+                // sample depth in each direction (up, down, left, right)
                 float hL = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, duv - float2(texel.x, 0), 0).r;
                 float hR = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, duv + float2(texel.x, 0), 0).r;
                 float hD = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, duv - float2(0, texel.y), 0).r;
                 float hU = SAMPLE_TEXTURE2D_LOD(_DepthMap, sampler_DepthMap, duv + float2(0, texel.y), 0).r;
 
-                float3 dx = float3(1, (hR - hL) * _DisplacementAmount, 0);
-                float3 dz = float3(0, (hU - hD) * _DisplacementAmount, 1);
+                // reconstruct surface gradient from height differences
+                float dhX = (hR - hL) * _DisplacementAmount;
+                float dhY = (hU - hD) * _DisplacementAmount;
 
-                normalWS = normalize(cross(dz, dx));
+                // build normal from cross product of surface gradients
+                float3 tangentWS   = normalize(float3(1, dhX, 0));
+                float3 bitangentWS = normalize(float3(0, dhY, 1));
+                float3 normalWS    = normalize(cross(bitangentWS, tangentWS));
+
+                // compute handedness (sign of tangent space)
+                float tangentSign = (tangentWS.y * bitangentWS.x - tangentWS.x * bitangentWS.y) < 0.0 ? -1.0 : 1.0;
+
+                // pack into float4 tangent (xyz + w sign)
+                float4 tangentWS4 = float4(normalize(tangentWS), tangentSign);
 
                 // Creates the TBN matrix
-                VertexNormalInputs tbn = GetVertexNormalInputs(TransformWorldToObjectNormal(normalWS), tangentWS);
+                VertexNormalInputs tbn = GetVertexNormalInputs(TransformWorldToObjectNormal(normalWS), tangentWS4);
 
                 OUT.tangent0 = tbn.tangentWS;
                 OUT.tangent1 = tbn.bitangentWS;
                 OUT.tangent2 = tbn.normalWS;
-
                 OUT.worldPos = positionWS;
 
                 // Convert to clip space for rasterization
@@ -421,8 +414,7 @@ Shader "Custom/Combined"
                 OUT.uv = TRANSFORM_TEX(uv, _BumpMap);
                 // Makes the snow darker where displaced down
                 // and looks more "wet"
-                // (Delete me if stupid :D but imo looks nice - F.)
-                OUT.tangent2.z = saturate(factor) * _DarkeningAmount;
+                OUT.tangent2.z = saturate(height) * _DarkeningAmount;
 
                 return OUT;
             }
@@ -433,6 +425,7 @@ Shader "Custom/Combined"
                 return max(0,(NDotL + wrap) / (wrap + 1));
             }
 
+            // used to visualize edges of the displacement
             half4 GetEdgeDebug(float2 uv, float3 worldPos)
             {
                 float2 texelSize = float2(1.0/_TexelSize, 1.0/_TexelSize);
@@ -443,24 +436,15 @@ Shader "Custom/Combined"
                 return half4(half3(1,0,0) * edge, edge);
             }
 
-            float Hash21(float2 p)
-            {
-                p = frac(p * float2(123.34, 456.21));
-                p += dot(p, p + 45.32);
-                return frac(p.x * p.y);
-            }
-
             half4 frag(Varyings IN) : SV_Target
             {
-                
-                half3 sparkleNormalTS = UnpackNormal(
-                    SAMPLE_TEXTURE2D(_SnowSparkleNormalMap, sampler_SnowSparkleNormalMap, IN.uv * _SparkleScale)
-                );
                 // Normal mapping
+                half3 sparkleNormalTS = UnpackNormal(SAMPLE_TEXTURE2D(_SnowSparkleNormalMap, sampler_SnowSparkleNormalMap, IN.uv * _SparkleScale));
                 half3 normalTS = UnpackNormal(SAMPLE_TEXTURE2D(_BumpMap, sampler_BumpMap, IN.uv));
                 half3x3 tangentToWorld = half3x3(IN.tangent0, IN.tangent1, IN.tangent2);
-                half3 sparkleTS = normalTS + sparkleNormalTS * _SparkleIntensity;
-                half3 worldNormal = normalize(TransformTangentToWorld(sparkleTS, tangentToWorld));
+                // overall snow looks better when combining the two normal maps
+                half3 worldNormal = normalize(TransformTangentToWorld(normalTS + sparkleNormalTS * 0.5, tangentToWorld));
+                half3 sparkleNormal = normalize(TransformTangentToWorld(sparkleNormalTS * _SparkleIntensity, tangentToWorld));
 
                 // Lighting setup
                 Light mainLight = GetMainLight();
@@ -486,20 +470,16 @@ Shader "Custom/Combined"
                 // SPARKLES
                 // ===========================================
                 float3 halfVec = normalize(lightDir + viewDir);
-                float sparkleDot = saturate(dot(worldNormal, halfVec));
-                
+                float sparkleDot = saturate(dot(sparkleNormal, halfVec));
+
+                // this makes only the brightest pixels shine
                 float sparkle = pow(sparkleDot, 500.0);
                 sparkle *= _SparkleIntensity;
-                sparkle *= step(_SparkleThreshold, sparkle);
 
                 // Slight color variation
                 float3 sparkleColor = float3(1.0, 0.97, 0.92);
                 color += sparkle * sparkleColor * lightColor;
                 // ===========================================
-
-                
-                //return float4(sparkleDot.rrr, 1.0);
-                //return float4(IN.height.rrr, 0.0);
                 
             #ifdef _DEBUG_NORMALS
                 return float4(worldNormal, 1.0);
