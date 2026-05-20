@@ -462,7 +462,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BatchRendererSnow
   mesh: {fileID: -2687483342731999757, guid: 7c0e02b895b548942b732f42559a4629, type: 3}
-  material: {fileID: 2100000, guid: 74ba9f9248a3f8eaeb1f986b6f5f8258, type: 2}
+  material: {fileID: 2100000, guid: 71fe70a358d3db54496d10dc9c0b45d6, type: 2}
   memcpy: {fileID: 7200000, guid: 07cd7233d9018dfb1b4da5e258c109b4, type: 3}
   fallHeight: 5
   animationDuration: 3
@@ -470,7 +470,7 @@ MonoBehaviour:
   FinalColor: {r: 1, g: 1, b: 1, a: 1}
   colorAnimTime: 1
   windVector: {x: 0.2, y: 0}
-  Scale: 0.1
+  Scale: 0.05
   SnowAreaSize: {x: 30, y: 30}
   SnowScaleInstanceOffset: 40.3
   SnowRotationInstanceOffset: 45
