@@ -1,0 +1,19 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+ByteAddressBuffer src;
+RWByteAddressBuffer dest;
+
+uniform uint dstOffset;
+uniform uint dstSize;
+
+[numthreads(64,1,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    uint tid = id.x;
+
+    uint offset = tid * 4;
+
+    if (offset < dstSize)
+        dest.Store(dstOffset + offset, src.Load(offset));
+}
